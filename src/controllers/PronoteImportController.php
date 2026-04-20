@@ -52,6 +52,7 @@ class PronoteImportController {
 
         if (count($lines) < 2) {
             Response::json(['error' => 'Fichier vide ou invalide'], 400);
+            return; // sécurité en cas de refactoring futur de Response::json
         }
 
         $headers          = self::parseTsvLine($lines[0]);
