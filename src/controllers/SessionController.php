@@ -74,23 +74,18 @@ class SessionController {
     // API -------------------------------------------------------
     public function apiCreate(): void {
         $data = json_decode(file_get_contents('php://input'), true);
-
-        // Validation
         if (!is_array($data) || empty($data['plan_id']) || empty($data['date'])) {
             Response::json(['error' => 'plan_id et date sont requis'], 400);
             return;
         }
-
         $db = Database::get();
-
-        // Vérifier que le plan existe bien
-        $check = $db->prepare("SELECT id FROM seating_plans WHERE id = ?");
-        $check->execute([(int)$data['plan_id']]);
-        if (!$check->fetch()) {
-            Response::json(['error' => 'Plan introuvable (id=' . (int)$data['plan_id'] . ')'], 404);
+        // Vérifier que le plan existe
+        $chk = $db->prepare("SELECT id FROM seating_plans WHERE id=?");
+        $chk->execute([(int)$data['plan_id']]);
+        if (!$chk->fetch()) {
+            Response::json(['error' => 'Plan introuvable'], 404);
             return;
         }
-
         $db->prepare("INSERT INTO sessions (plan_id, date, subject) VALUES (?,?,?)")
         ->execute([(int)$data['plan_id'], $data['date'], $data['subject'] ?? null]);
         Response::json(['ok' => true, 'id' => (int)$db->lastInsertId()]);
