@@ -90,8 +90,13 @@ function openTagMenu(seatId, studentId, name) {
   document.getElementById('selectedStudent').hidden = false;
 }
 
+// ✅ CORRECTION — passer la couleur lors de l'ajout
 function selectTag(tag) {
   if (!currentStudentId) return;
+  // Récupérer la couleur depuis le bouton tag
+  const tagBtn = document.querySelector(`.tag-btn[data-tag="${tag}"]`);
+  const color  = tagBtn ? getComputedStyle(tagBtn).getPropertyValue('--tag-color').trim() : '#888';
+
   fetch(`/api/sessions/${SESSION_ID}/observations`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -99,16 +104,16 @@ function selectTag(tag) {
   })
   .then(r => r.json())
   .then(d => {
-    if (d.ok) addTagChip(currentStudentId, d.obs_id, tag);
+    if (d.ok) addTagChip(currentStudentId, d.obs_id, tag, color); // ← passer color
   });
 }
 
-// Ajouter le chip directement sans rechargement réseau
-function addTagChip(studentId, obsId, tag) {
+function addTagChip(studentId, obsId, tag, color = '#888') {
   const container = document.getElementById('tags-' + studentId);
   if (!container) return;
   const span = document.createElement('span');
   span.className = 'tag-chip';
+  span.style.background = color; // ← appliquer la couleur
   span.title = 'Retirer';
   span.textContent = tag;
   span.onclick = (e) => { e.stopPropagation(); removeObs(obsId, studentId); span.remove(); };
