@@ -208,8 +208,14 @@ function createPlan(e) {
   fetch('/api/classes/' + CLASS_ID + '/plans', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(Object.fromEntries(fd))
-  }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+    body: JSON.stringify({
+      room_id: parseInt(fd.get('room_id'), 10),
+      name: fd.get('name') || 'Plan par défaut',
+    })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+  });
 }
 
 function deletePlan(id) {
