@@ -56,6 +56,7 @@ ob_start();
           data-student-id="<?= $st['id'] ?>"
           data-first="<?= htmlspecialchars($st['first_name']) ?>"
           data-last="<?= htmlspecialchars($st['last_name']) ?>"
+          data-name="<?= strtolower($st['last_name'] . ' ' . $st['first_name'])?>"
           onclick="assignStudent(<?= $st['id'] ?>)">
         <span class="student-initials"><?= mb_substr($st['first_name'],0,1) . mb_substr($st['last_name'],0,1) ?></span>
         <span class="student-fullname"><?= htmlspecialchars($st['first_name'] . ' ' . $st['last_name']) ?></span>
