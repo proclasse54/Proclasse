@@ -6,39 +6,6 @@ require_once __DIR__ . '/../Response.php';
 
 class SessionController
 {
-    /*public function index(): void
-    {
-        $db = Database::get();
-
-        // Pagination : 100 séances par page, triées par date décroissante
-        $page    = max(1, (int)($_GET['page'] ?? 1));
-        $perPage = 100;
-        $offset  = ($page - 1) * $perPage;
-
-        $sessions = $db->query("
-            SELECT se.*, sp.name as plan_name, c.name as class_name, r.name as room_name
-            FROM sessions se
-            JOIN seating_plans sp ON sp.id = se.plan_id
-            JOIN classes c ON c.id = sp.class_id
-            JOIN rooms r ON r.id = sp.room_id
-            ORDER BY se.date DESC, se.time_start DESC, se.created_at DESC
-            LIMIT $perPage OFFSET $offset
-        ")->fetchAll();
-
-        $total      = (int)$db->query("SELECT COUNT(*) FROM sessions")->fetchColumn();
-        $totalPages = (int)ceil($total / $perPage);
-
-        $plans = $db->query("
-            SELECT sp.*, c.name as class_name, r.name as room_name
-            FROM seating_plans sp
-            JOIN classes c ON c.id = sp.class_id
-            JOIN rooms r ON r.id = sp.room_id
-            ORDER BY c.name
-        ")->fetchAll();
-
-        require __DIR__ . '/../../views/sessions/index.php';
-    }*/
-        
     public function index(): void
     {
         $db = Database::get();
@@ -82,7 +49,7 @@ class SessionController
     {
         $db = Database::get();
 
-        $stmt = $db->prepare("
+        $stmtSession = $db->prepare("
             SELECT se.*, sp.name as plan_name, sp.room_id, sp.class_id,
                    c.name as class_name, r.name as room_name,
                    r.`rows` as room_rows, r.`cols` as room_cols
@@ -92,15 +59,15 @@ class SessionController
             JOIN rooms r ON r.id = sp.room_id
             WHERE se.id = ?
         ");
-        $stmt->execute([$p['id']]);
-        $session = $stmt->fetch();
+        $stmtSession->execute([$p['id']]);
+        $session = $stmtSession->fetch();
 
         if (!$session) {
             http_response_code(404);
             return;
         }
 
-        $stmt4 = $db->prepare("
+        $stmtSeats = $db->prepare("
             SELECT s.*, sa.student_id, st.last_name, st.first_name
             FROM seats s
             LEFT JOIN seating_assignments sa ON sa.seat_id = s.id AND sa.plan_id = ?
@@ -108,19 +75,19 @@ class SessionController
             WHERE s.room_id = ?
             ORDER BY s.row_index, s.col_index
         ");
-        $stmt4->execute([$session['plan_id'], $session['room_id']]);
-        $seats = $stmt4->fetchAll();
+        $stmtSeats->execute([$session['plan_id'], $session['room_id']]);
+        $seats = $stmtSeats->fetchAll();
 
         $tags = $db->query("SELECT * FROM tags ORDER BY sort_order")->fetchAll();
 
-        $stmt5 = $db->prepare("
+        $stmtObs = $db->prepare("
             SELECT o.*, t.color, t.icon
             FROM observations o
             LEFT JOIN tags t ON t.label = o.tag
             WHERE o.session_id = ?
         ");
-        $stmt5->execute([$p['id']]);
-        $observations = $stmt5->fetchAll();
+        $stmtObs->execute([$p['id']]);
+        $observations = $stmtObs->fetchAll();
 
         require __DIR__ . '/../../views/sessions/live.php';
     }
@@ -136,11 +103,25 @@ class SessionController
             return;
         }
 
+        // validation du format de date
+        if (!\DateTime::createFromFormat('Y-m-d', $data['date'])) {
+            Response::json(['error' => 'Format de date invalide (attendu : YYYY-MM-DD)'], 400);
+            return;
+        }
+
+        // Validation optionnelle des heures
+        foreach (['time_start', 'time_end'] as $field) {
+            if (!empty($data[$field]) && !\DateTime::createFromFormat('H:i', $data[$field]) && !\DateTime::createFromFormat('H:i:s', $data[$field])) {
+                Response::json(['error' => "Format d'heure invalide pour $field (attendu : HH:MM)"], 400);
+                return;
+            }
+        }
+
         $db = Database::get();
 
-        $chk = $db->prepare("SELECT id FROM seating_plans WHERE id = ?");
-        $chk->execute([(int)$data['plan_id']]);
-        if (!$chk->fetch()) {
+        $stmtPlan = $db->prepare("SELECT id FROM seating_plans WHERE id = ?");
+        $stmtPlan->execute([(int)$data['plan_id']]);
+        if (!$stmtPlan->fetch()) {
             Response::json(['error' => 'Plan introuvable'], 404);
             return;
         }
@@ -182,22 +163,30 @@ class SessionController
         Response::json(['ok' => true, 'obs_id' => (int)$db->lastInsertId()]);
     }
 
+    // vérification que l'observation appartient bien à la séance
     public function apiRemoveObservation(array $p): void
     {
-        Database::get()->prepare("DELETE FROM observations WHERE id = ?")->execute([$p['obs_id']]);
+        $stmt = Database::get()->prepare("DELETE FROM observations WHERE id = ? AND session_id = ?");
+        $stmt->execute([$p['obs_id'], $p['id']]);
+
+        if ($stmt->rowCount() === 0) {
+            Response::json(['error' => 'Observation introuvable ou non autorisée'], 404);
+            return;
+        }
+
         Response::json(['ok' => true]);
     }
 
     public function apiGetObservations(array $p): void
     {
-        $stmt = Database::get()->prepare("
+        $stmtObs = Database::get()->prepare("
             SELECT o.*, t.color, t.icon
             FROM observations o
             LEFT JOIN tags t ON t.label = o.tag
             WHERE o.session_id = ?
         ");
-        $stmt->execute([$p['id']]);
-        Response::json($stmt->fetchAll());
+        $stmtObs->execute([$p['id']]);
+        Response::json($stmtObs->fetchAll());
     }
 
     public function apiGetTags(): void

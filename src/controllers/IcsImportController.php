@@ -18,6 +18,21 @@ class IcsImportController
             return;
         }
 
+        $originalName = $_FILES['icsfile']['name'] ?? '';
+        $ext          = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['ics', 'ical', 'ifb', 'icalendar'], true)) {
+            Response::json(['error' => 'Seuls les fichiers .ics sont acceptés'], 400);
+            return;
+        }
+
+        $finfo    = new \finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($_FILES['icsfile']['tmp_name']);
+        $allowedMimes = ['text/calendar', 'text/plain', 'application/octet-stream'];
+        if (!in_array($mimeType, $allowedMimes, true)) {
+            Response::json(['error' => "Type de fichier invalide : $mimeType"], 400);
+            return;
+        }
+
         $content = file_get_contents($_FILES['icsfile']['tmp_name']);
         if (!$content) {
             Response::json(['error' => 'Fichier illisible'], 400);
@@ -239,22 +254,33 @@ class IcsImportController
             }
             if ($current === null) { continue; }
 
-            if (!preg_match('/^([A-Z\-]+)(?:;[^:]+)?:(.*)$/', $line, $m)) {
+            // regex robuste supportant TZID= et autres paramètres contenant ":"
+            // La valeur commence après le premier ":" qui suit le nom de propriété (+ paramètres)
+            if (!preg_match('/^([A-Z][A-Z0-9\-]*)((?:;[^:]+)*):(.*)/s', $line, $m)) {
                 continue;
             }
 
-            $key = strtolower($m[1]);
-            $val = str_replace(
-                ['\\n', '\\N', '\\,', '\\;', '\\:'],
-                ["\n",  "\n",  ',',   ';',   ':'],
-                $m[2]
+            $key    = strtolower($m[1]);
+            $params = $m[2]; // ex: ";TZID=Europe/Paris"
+            $val    = str_replace(
+                ['\\n', '\\N', '\\,', '\\;'],
+                ["\n",  "\n",  ',',   ';'],
+                $m[3]
             );
+
+            // Stocker la timezone du DTSTART/DTEND si présente dans les paramètres
+            if (in_array($key, ['dtstart', 'dtend'], true) && str_contains($params, 'TZID=')) {
+                preg_match('/TZID=([^;]+)/', $params, $tzMatch);
+                $current[$key . '_tzid'] = $tzMatch[1] ?? null;
+            }
+
             $current[$key] = $val;
         }
 
         return $events;
     }
 
+    // parseSummary plus robuste — le dernier segment est la classe
     private function parseSummary(string $summary): array
     {
         $parts = array_map('trim', explode(' - ', $summary));
@@ -262,9 +288,11 @@ class IcsImportController
             return [null, null];
         }
 
+        // Le sujet est le premier segment, la classe est le dernier
         $subject  = $parts[0];
-        $rawClass = trim($parts[1], '[]<>');
+        $rawClass = trim(end($parts), '[]<>');
 
+        // Si plusieurs classes séparées par virgule, prendre la première
         if (str_contains($rawClass, ',')) {
             $rawClass = trim(explode(',', $rawClass)[0]);
         }
@@ -272,13 +300,18 @@ class IcsImportController
         return [$subject ?: null, $rawClass ?: null];
     }
 
-    private function icsDateToLocal(string $icsDate): ?\DateTime
+    private function icsDateToLocal(string $icsDate, ?string $tzid = null): ?\DateTime
     {
         $icsDate = trim($icsDate);
         if (!$icsDate) return null;
         try {
             if (str_ends_with($icsDate, 'Z')) {
                 $dt = new \DateTime($icsDate, new \DateTimeZone('UTC'));
+                $dt->setTimezone(new \DateTimeZone('Europe/Paris'));
+            } elseif ($tzid) {
+                // Bug 17 : utiliser la TZID extraite des paramètres si disponible
+                $tz = new \DateTimeZone($tzid);
+                $dt = new \DateTime($icsDate, $tz);
                 $dt->setTimezone(new \DateTimeZone('Europe/Paris'));
             } else {
                 $dt = new \DateTime($icsDate, new \DateTimeZone('Europe/Paris'));
