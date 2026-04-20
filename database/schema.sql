@@ -195,3 +195,12 @@ INSERT INTO tags (label, color, icon, sort_order) VALUES
   ('Félicitations',  '#d19900', '🏅', 7),
   ('Avertissement',  '#a12c7b', '⚠️',  8)
 ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order);
+
+CREATE TABLE IF NOT EXISTS tags (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    label      VARCHAR(50)  NOT NULL,
+    color      VARCHAR(20)  NOT NULL DEFAULT '#888888',
+    icon       VARCHAR(10)  DEFAULT '',
+    sort_order TINYINT      NOT NULL DEFAULT 99,
+    UNIQUE KEY uq_tag_label (label)
+) ENGINE=InnoDB;
