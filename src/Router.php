@@ -9,15 +9,25 @@ class Router {
 
     public function dispatch(string $method, string $uri): void {
         $uri = strtok($uri, '?');
+        $isHead = ($method === 'HEAD');
+        if ($isHead) $method = 'GET';
+
         foreach ($this->routes as $route) {
             $pattern = '#^' . preg_replace('#\{(\w+)\}#', '(?P<$1>[^/]+)', $route['path']) . '$#';
             if ($route['method'] === $method && preg_match($pattern, $uri, $m)) {
                 $params = array_filter($m, 'is_string', ARRAY_FILTER_USE_KEY);
-                ($route['handler'])($params);
+                if (!$isHead) {
+                    ($route['handler'])($params);
+                } else {
+                    ob_start();
+                    ($route['handler'])($params);
+                    ob_end_clean();
+                }
                 return;
             }
         }
         http_response_code(404);
         require __DIR__ . '/../views/404.php';
     }
+
 }
