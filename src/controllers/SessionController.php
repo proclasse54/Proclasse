@@ -47,7 +47,7 @@ class SessionController {
         $seats = $stmt4->fetchAll();
 
         $tags = $db->query("SELECT * FROM tags ORDER BY sort_order")->fetchAll();
-        $stmt5 = $db->prepare("SELECT * FROM observations WHERE session_id=?");
+        $stmt5 = $db->prepare("SELECT o.*, t.color, t.icon FROM observations o LEFT JOIN tags t ON t.label = o.tag WHERE o.session_id = ?");
         $stmt5->execute([$p['id']]);
         $observations = $stmt5->fetchAll();
         require __DIR__ . '/../../views/sessions/live.php';
