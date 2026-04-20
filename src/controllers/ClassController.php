@@ -115,7 +115,7 @@ class ClassController {
 
     public function apiSavePlan(array $p): void {
         $data = json_decode(file_get_contents('php://input'), true);
-        if (!is_array($data) || empty($data['name'])) {
+        if (!is_array($data) || empty($data['room_id'])) {
             Response::json(['error' => 'Données invalides'], 400);
             return;
         }        
@@ -153,7 +153,7 @@ class ClassController {
     public function apiSaveAssignments(array $p): void {
         $planId = (int)$p['plan_id'];
         $data = json_decode(file_get_contents('php://input'), true);
-        if (!is_array($data) || empty($data['name'])) {
+        if (!is_array($data) || empty($data['assignments'])) {
             Response::json(['error' => 'Données invalides'], 400);
             return;
         }        

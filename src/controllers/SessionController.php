@@ -108,7 +108,7 @@ class SessionController {
 
     public function apiSaveTag(): void {
         $data = json_decode(file_get_contents('php://input'), true);
-        if (!is_array($data) || empty($data['name'])) {
+        if (!is_array($data) || empty($data['label'])) {
             Response::json(['error' => 'Données invalides'], 400);
             return;
         }        
