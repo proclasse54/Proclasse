@@ -36,6 +36,10 @@ class RoomController {
 
     public function apiSave(array $p): void {
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
         $db   = Database::get();
 
         if (!empty($p['id'])) {

@@ -74,6 +74,10 @@ class SessionController {
     // API -------------------------------------------------------
     public function apiCreate(): void {
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
         $db = Database::get();
         $db->prepare("INSERT INTO sessions (plan_id, date, subject) VALUES (?,?,?)")
            ->execute([$data['plan_id'], $data['date'], $data['subject'] ?? null]);
@@ -87,6 +91,10 @@ class SessionController {
 
     public function apiAddObservation(array $p): void {
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
         $db = Database::get();
         $db->prepare("INSERT INTO observations (session_id, student_id, tag, note) VALUES (?,?,?,?)")
            ->execute([$p['id'], $data['student_id'], $data['tag'], $data['note'] ?? null]);
@@ -111,6 +119,10 @@ class SessionController {
 
     public function apiSaveTag(): void {
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
         $db = Database::get();
         if (!empty($data['id'])) {
             $db->prepare("UPDATE tags SET label=?, color=?, icon=? WHERE id=?")->execute([$data['label'], $data['color'], $data['icon'], $data['id']]);

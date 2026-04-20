@@ -115,6 +115,11 @@ class ClassController {
 
     public function apiSavePlan(array $p): void {
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
+
         $db = Database::get();
         $stmt = $db->prepare("SELECT id FROM seating_plans WHERE class_id=? AND room_id=? AND name=?");
         $stmt->execute([$p['id'], $data['room_id'], $data['name'] ?? 'Plan par défaut']);
@@ -148,6 +153,11 @@ class ClassController {
     public function apiSaveAssignments(array $p): void {
         $planId = (int)$p['plan_id'];
         $data = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($data) || empty($data['name'])) {
+            Response::json(['error' => 'Données invalides'], 400);
+            return;
+        }        
+
         $db = Database::get();
         $db->prepare("DELETE FROM seating_assignments WHERE plan_id=?")->execute([$planId]);
         $stmt = $db->prepare("INSERT INTO seating_assignments (plan_id, seat_id, student_id) VALUES (?,?,?)");
