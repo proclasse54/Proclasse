@@ -53,9 +53,10 @@ ob_start();
     <div class="plan-students" id="studentList">
       <?php foreach ($students as $st): ?>
       <div class="plan-student <?= isset($assignedStudents[$st['id']]) ? 'placed' : '' ?>"
-           data-student-id="<?= $st['id'] ?>"
-           data-name="<?= strtolower($st['last_name'] . ' ' . $st['first_name']) ?>"
-           onclick="assignStudent(<?= $st['id'] ?>)">
+          data-student-id="<?= $st['id'] ?>"
+          data-first="<?= htmlspecialchars($st['first_name']) ?>"
+          data-last="<?= htmlspecialchars($st['last_name']) ?>"
+          onclick="assignStudent(<?= $st['id'] ?>)">
         <span class="student-initials"><?= mb_substr($st['first_name'],0,1) . mb_substr($st['last_name'],0,1) ?></span>
         <span class="student-fullname"><?= htmlspecialchars($st['first_name'] . ' ' . $st['last_name']) ?></span>
         <?php if (isset($assignedStudents[$st['id']])): ?>
@@ -119,11 +120,8 @@ function renderSeat(seatId, studentId) {
   if (!el) return;
   if (studentId) {
     const stEl = document.querySelector(`[data-student-id="${studentId}"]`);
-    const name = stEl ? stEl.querySelector('.student-fullname').textContent : '';
-    const parts = name.split(' ');
-    const first = parts[0] || '';
-    const last  = parts.slice(1).join(' ');
-    el.className = 'plan-seat assigned';
+    const first = stEl?.dataset.first ?? '';
+    const last  = stEl?.dataset.last  ?? '';
     el.innerHTML = `<span class="plan-seat-name">${first}<br><small>${last}</small></span>`;
   } else {
     el.className = 'plan-seat free';
