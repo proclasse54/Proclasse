@@ -1,10 +1,15 @@
 <?php
 $pageTitle = 'Séance — ' . $session['class_name'] . ' — ProClasse';
 // Organiser les sièges en grille
+$seatMap = [];
+foreach ($seats as $s) { $seatMap[$s['row_index']][$s['col_index']] = $s; }
+
 $grid = [];
-foreach ($seats as $s) { $grid[$s['row_index']][$s['col_index']] = $s; }
-ksort($grid);
-foreach ($grid as &$row) ksort($row);
+for ($r = 0; $r < $session['room_rows']; $r++) {
+    for ($c = 0; $c < $session['room_cols']; $c++) {
+        $grid[$r][$c] = $seatMap[$r][$c] ?? null; // null = place inactive
+    }
+}
 
 // Observations indexées par student_id
 $obsMap = [];
@@ -32,23 +37,27 @@ ob_start();
     <div class="live-room" id="liveRoom" style="--room-cols: <?= $session['room_cols'] ?>">
       <?php foreach ($grid as $rowIdx => $cols): ?>
         <?php foreach ($cols as $colIdx => $seat): ?>
-        <div class="live-seat <?= $seat['student_id'] ? 'occupied' : 'empty' ?>"
-             data-seat-id="<?= $seat['id'] ?>"
-             data-student-id="<?= $seat['student_id'] ?? '' ?>"
-             onclick="<?= $seat['student_id'] ? "openTagMenu({$seat['id']}, {$seat['student_id']}, '" . htmlspecialchars(addslashes($seat['last_name'] . ' ' . $seat['first_name'])) . "')" : 'void(0)' ?>">
-          <?php if ($seat['student_id']): ?>
-            <div class="seat-name"><?= htmlspecialchars($seat['first_name']) ?><br><small><?= htmlspecialchars($seat['last_name']) ?></small></div>
-            <div class="seat-tags" id="tags-<?= $seat['student_id'] ?>">
-              <?php foreach ($obsMap[$seat['student_id']] ?? [] as $o): ?>
-              <span class="tag-chip" style="background:<?= htmlspecialchars($o['color'] ?? '#888') ?>"
-                    onclick="event.stopPropagation(); removeObs(<?= $o['id'] ?>, <?= $seat['student_id'] ?>)"
-                    title="Retirer"><?= $o['icon'] ?? '' ?></span>
-              <?php endforeach; ?>
-            </div>
+          <?php if ($seat === null): ?>
+            <div class="live-seat inactive"></div>  <!-- allée / espace vide -->
           <?php else: ?>
-            <div class="seat-empty-label">—</div>
+            <div class="live-seat <?= $seat['student_id'] ? 'occupied' : 'empty' ?>"
+                data-seat-id="<?= $seat['id'] ?>"
+                data-student-id="<?= $seat['student_id'] ?? '' ?>"
+                onclick="<?= $seat['student_id'] ? "openTagMenu({$seat['id']}, {$seat['student_id']}, '" . htmlspecialchars(addslashes($seat['last_name'] . ' ' . $seat['first_name'])) . "')" : 'void(0)' ?>">
+              <?php if ($seat['student_id']): ?>
+                <div class="seat-name"><?= htmlspecialchars($seat['first_name']) ?><br><small><?= htmlspecialchars($seat['last_name']) ?></small></div>
+                <div class="seat-tags" id="tags-<?= $seat['student_id'] ?>">
+                  <?php foreach ($obsMap[$seat['student_id']] ?? [] as $o): ?>
+                  <span class="tag-chip" style="background:<?= htmlspecialchars($o['color'] ?? '#888') ?>"
+                        onclick="event.stopPropagation(); removeObs(<?= $o['id'] ?>, <?= $seat['student_id'] ?>)"
+                        title="Retirer"><?= $o['icon'] ?? '' ?></span>
+                  <?php endforeach; ?>
+                </div>
+              <?php else: ?>
+                <div class="seat-empty-label">—</div>
+              <?php endif; ?>
+            </div>
           <?php endif; ?>
-        </div>
         <?php endforeach; ?>
       <?php endforeach; ?>
     </div>
