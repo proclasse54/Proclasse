@@ -52,19 +52,6 @@ class ClassController {
         $plan = $stmt->fetch();
         if (!$plan) { http_response_code(404); return; }
 
-        /* requête $stmt2 inutile (résultat écrasé)
-        $stmt2 = $db->prepare("
-            SELECT s.*, sa.student_id, st.first_name, st.last_name
-            FROM seats s
-            LEFT JOIN seating_assignments sa ON sa.seat_id = s.id AND sa.plan_id = ?
-            LEFT JOIN students st ON st.id = sa.student_id
-            WHERE s.room_id = ?
-            ORDER BY s.row_index, s.col_index
-        ");
-        $stmt2->execute([$planId, $plan['room_id']]);
-        $seats = $stmt2->fetchAll();
-        */
-
         $stmt3 = $db->prepare("SELECT id, first_name, last_name FROM students WHERE class_id=? ORDER BY last_name, first_name");
         $stmt3->execute([$plan['class_id']]);
         $students = $stmt3->fetchAll();
@@ -77,6 +64,17 @@ class ClassController {
         $stmt4->execute([$planId]);
         $assignments = $stmt4->fetchAll();
         $assignedStudents = array_column($assignments, null, 'student_id');
+
+        $stmt_seats = $db->prepare("
+            SELECT s.*, sa.student_id, st.first_name, st.last_name
+            FROM seats s
+            LEFT JOIN seating_assignments sa ON sa.seat_id = s.id AND sa.plan_id = ?
+            LEFT JOIN students st ON st.id = sa.student_id
+            WHERE s.room_id = ?
+            ORDER BY s.row_index, s.col_index
+        ");
+        $stmt_seats->execute([$planId, $plan['room_id']]);
+        $seats = $stmt_seats->fetchAll();
 
         $room = ['cols' => $plan['room_cols'], 'rows' => $plan['room_rows']];
         require ROOT . '/views/plans/edit.php';
