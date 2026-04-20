@@ -40,6 +40,7 @@ class PronoteImportController {
     public function import(array $p): void {
         if (empty($_FILES['csv']['tmp_name'])) {
             Response::json(['error' => 'Fichier manquant'], 400);
+            return; // sécurité en cas de refactoring futur de Response::json
         }
 
         $raw = file_get_contents($_FILES['csv']['tmp_name']);
