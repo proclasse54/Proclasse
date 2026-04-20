@@ -122,6 +122,17 @@ class PronoteImportController {
             ON DUPLICATE KEY UPDATE field_value=VALUES(field_value), imported_at=CURRENT_TIMESTAMP
         ");
 
+        $stmtGroupUpsert = $db->prepare("
+            INSERT INTO `groups` (class_id, name)
+            VALUES (:class_id, :name)
+            ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
+        ");
+
+        $stmtGroupStudent = $db->prepare("
+            INSERT IGNORE INTO group_students (group_id, student_id)
+            VALUES (:group_id, :student_id)
+        ");        
+
         // Détecter l'année scolaire courante (ex: "2025-2026")
         $month       = (int)date('n');
         $year        = (int)date('Y');
@@ -197,6 +208,32 @@ class PronoteImportController {
                         $studentId = $row['id'] ?? null;
                     }
 
+                    // ── Gestion des groupes Pronote ──
+                    if ($studentId && !empty($values[':groups'])) {
+                        // Exemple Pronote : "G1, G2 | AP Maths"
+                        $rawGroups = (string)$values[':groups'];
+                        $groupNames = preg_split('/\s*[,;|]\s*/', $rawGroups, -1, PREG_SPLIT_NO_EMPTY);
+
+                        foreach ($groupNames as $groupName) {
+                            $groupName = trim($groupName);
+                            if ($groupName === '') continue;
+
+                            // Crée (ou récupère) le groupe pour cette classe
+                            $stmtGroupUpsert->execute([
+                                ':class_id' => $values[':class_id'],
+                                ':name'     => $groupName,
+                            ]);
+                            $groupId = (int)$db->lastInsertId();
+                            if ($groupId > 0) {
+                                // Lie l'élève au groupe
+                                $stmtGroupStudent->execute([
+                                    ':group_id'   => $groupId,
+                                    ':student_id' => $studentId,
+                                ]);
+                            }
+                        }
+                    }
+                    
                     // Sauvegarder toutes les colonnes brutes
                     if ($studentId) {
                         foreach ($headers as $hIdx => $headerName) {

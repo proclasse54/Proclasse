@@ -60,8 +60,19 @@ class IcsImportController
             $stmtClass = $db->prepare("SELECT id FROM classes WHERE name = ? LIMIT 1");
             $stmtClass->execute([$className]);
             $class = $stmtClass->fetch();
+
+            $group = null;
             if (!$class) {
-                $errors[] = "Classe inconnue en base : « $className » (séance du $date)";
+                $stmtGroup = $db->prepare("SELECT id, class_id FROM `groups` WHERE name = ? LIMIT 1");
+                $stmtGroup->execute([$className]);
+                $group = $stmtGroup->fetch();
+                if ($group && !empty($group['class_id'])) {
+                    $class = ['id' => (int)$group['class_id']];
+                }
+            }
+
+            if (!$class) {
+                $errors[] = "Classe/Groupe inconnue en base : « $className » (séance du $date)";
                 continue;
             }
 

@@ -218,3 +218,27 @@ ALTER TABLE sessions
 -- Index pour accélérer la déduplication lors de l'import ICS
 CREATE INDEX IF NOT EXISTS idx_sessions_plan_date_time
     ON sessions (plan_id, `date`, time_start);
+
+
+
+
+
+
+CREATE TABLE IF NOT EXISTS `groups` (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    class_id INT DEFAULT NULL,
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_group_name (name),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS group_students (
+    group_id INT NOT NULL,
+    student_id INT NOT NULL,
+    PRIMARY KEY (group_id, student_id),
+    FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+) ENGINE=InnoDB;    
+
+
