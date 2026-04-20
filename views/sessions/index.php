@@ -104,14 +104,13 @@ function createSession(e) {
     body:    JSON.stringify(payload),
   })
   .then(r => {
-    if (!r.ok) throw new Error('Erreur serveur : ' + r.status);
-    return r.json();
+    return r.json().then(d => ({ ok: r.ok, status: r.status, data: d }));
   })
-  .then(d => {
-    if (d.ok) {
-      window.location = '/sessions/' + d.id + '/live';
+  .then(({ ok, status, data }) => {
+    if (ok && data.ok) {
+      window.location = '/sessions/' + data.id + '/live';
     } else {
-      alert('Erreur : ' + (d.error ?? 'inconnue'));
+      alert('Erreur ' + status + ' : ' + (data.error ?? JSON.stringify(data)));
     }
   })
   .catch(err => {
