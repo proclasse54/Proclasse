@@ -74,25 +74,14 @@ class SessionController {
     }
 
     public function apiDelete(array $p): void {
-        $db = Database::get();
-        $stmt = $db->prepare("
-            SELECT COUNT(*) FROM sessions se
-            JOIN seating_plans sp ON sp.id = se.plan_id
-            WHERE sp.room_id = ?
-        ");
-        $stmt->execute([$p['id']]);
-        if ($stmt->fetchColumn() > 0) {
-            Response::json(['error' => 'Des séances actives utilisent cette salle'], 409);
-            return;
-        }
-        $db->prepare("DELETE FROM rooms WHERE id=?")->execute([$p['id']]);
+        Database::get()->prepare("DELETE FROM sessions WHERE id=?")->execute([$p['id']]);
         Response::json(['ok' => true]);
-    }    
+    }
 
     public function apiAddObservation(array $p): void {
         $data = json_decode(file_get_contents('php://input'), true);
-        if (!is_array($data) || empty($data['name'])) {
-            Response::json(['error' => 'Données invalides'], 400);
+        if (!is_array($data) || empty($data['student_id']) || empty($data['tag'])) {
+            Response::json(['error' => 'student_id et tag sont requis'], 400);
             return;
         }        
         $db = Database::get();

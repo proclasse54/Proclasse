@@ -78,13 +78,18 @@ class RoomController {
 
     public function apiDelete(array $p): void {
         $db = Database::get();
-        $count = $db->prepare("SELECT COUNT(*) FROM sessions se JOIN seating_plans sp ON sp.id=se.plan_id WHERE sp.room_id=?");
-        $count->execute([$p['id']]);
-        if ($count->fetchColumn() > 0) {
+        $stmt = $db->prepare("
+            SELECT COUNT(*) FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            WHERE sp.room_id = ?
+        ");
+        $stmt->execute([$p['id']]);
+        if ($stmt->fetchColumn() > 0) {
             Response::json(['error' => 'Des séances utilisent cette salle'], 409);
             return;
         }
         $db->prepare("DELETE FROM rooms WHERE id=?")->execute([$p['id']]);
         Response::json(['ok' => true]);
     }
+
 }
