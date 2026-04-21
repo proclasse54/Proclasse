@@ -109,28 +109,22 @@ class IcsImportController
                 );
                 $stmtPlan->execute([$class['id']]);
             }
+
             $plan = $stmtPlan->fetch();
 
             if (!$plan) {
-                if ($group) {
-                    // Pas de plan pour ce groupe → on le signale mais on n'ignore pas la séance
-                    // On prend le premier plan de la classe par défaut
-                    $stmtPlanFallback = $db->prepare(
-                        "SELECT id FROM seating_plans WHERE class_id = ? LIMIT 1"
-                    );
-                    $stmtPlanFallback->execute([$class['id']]);
-                    $plan = $stmtPlanFallback->fetch();
+                $planId = $this->createRandomPlan(
+                    $db,
+                    $class['id'],
+                    $className,
+                    $group ? (int)$group['id'] : null
+                );
+                if (!$planId) {
+                    $errors[] = "Impossible de créer un plan pour : $className (pas d'élèves ou de salle ?)";
+                    continue;
                 }
-
-                if (!$plan) {
-                    $planId = $this->createRandomPlan($db, $class['id'], $className, $group ? (int)$group['id'] : null);
-                    if (!$planId) {
-                        $errors[] = "Impossible de créer un plan pour : $className (pas d'élèves ou de salle ?)";
-                        continue;
-                    }
-                    $plan = ['id' => $planId];
-                    $created++;
-                }
+                $plan = ['id' => $planId];
+                $created++;
             }
 
             // --- Déduplication sur plan_id + date + time_start ---
