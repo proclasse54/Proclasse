@@ -180,9 +180,16 @@ body {
 
 /* ── Modal ────────────────────────────────────────────────── */
 .modal-overlay {
-  position: fixed; inset: 0; background: oklch(0 0 0 / .5);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 100; padding: var(--space-4);
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+/* hidden gère display:none ; quand on retire hidden, on veut flex */
+.modal-overlay:not([hidden]) {
+    display: flex;
 }
 .modal-overlay[hidden] { display: none; }
 .modal {
