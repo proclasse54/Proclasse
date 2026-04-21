@@ -30,68 +30,128 @@
 
 <!-- Bouton nouvelle séance manuelle -->
 <button class="btn btn-primary" onclick="openNewSessionModal()">Nouvelle séance</button>
-
+<!-- Toggle vue -->
+<div class="view-toggle">
+    <button id="btnList"  class="btn-view active" onclick="setView('list')">☰ Liste</button>
+    <button id="btnWeek"  class="btn-view"        onclick="setView('week')">📅 Semaine</button>
+</div>
 <!-- Liste des séances -->
-<?php if (empty($sessions)): ?>
-    <div class="card" style="margin-top:1.5rem;">
-        <h3>Aucune séance</h3>
-        <p>Créez votre première séance ou importez votre EDT Pronote ci-dessus.</p>
-    </div>
-<?php else: ?>
-    <p style="margin:.75rem 0;color:var(--color-text-muted);">
-        <?= $total ?> séance(s) au total — page <?= $page ?>/<?= $totalPages ?>
-    </p>
-    <table>
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Heure</th>
-                <th>Classe</th>
-                <th>Matière</th>
-                <th>Plan / Salle</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($sessions as $s): ?>
-            <tr>
-                <td><?= htmlspecialchars($s['date']) ?></td>
-                <td>
-                    <?php if (!empty($s['time_start'])): ?>
-                        <?= substr($s['time_start'], 0, 5) ?>
-                        <?= !empty($s['time_end']) ? ' → ' . substr($s['time_end'], 0, 5) : '' ?>
-                    <?php else: ?>
-                        –
-                    <?php endif; ?>
-                </td>
-                <td><?= htmlspecialchars($s['class_name']) ?></td>
-                <td><?= htmlspecialchars($s['subject'] ?? '–') ?></td>
-                <td>
-                    <?= htmlspecialchars($s['plan_name']) ?>
-                    <small style="color:var(--color-text-muted)">(<?= htmlspecialchars($s['room_name']) ?>)</small>
-                </td>
-                <td>
-                    <a href="/sessions/<?= $s['id'] ?>/live" class="btn btn-sm">Ouvrir</a>
-                    <button class="btn btn-sm" onclick="deleteSession(<?= $s['id'] ?>)">Supprimer</button>
-                </td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
+<div id="viewList">
+    <?php if (empty($sessions)): ?>
+        <div class="card" style="margin-top:1.5rem;">
+            <h3>Aucune séance</h3>
+            <p>Créez votre première séance ou importez votre EDT Pronote ci-dessus.</p>
+        </div>
+    <?php else: ?>
+        <p style="margin:.75rem 0;color:var(--color-text-muted);">
+            <?= $total ?> séance(s) au total — page <?= $page ?>/<?= $totalPages ?>
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Heure</th>
+                    <th>Classe</th>
+                    <th>Matière</th>
+                    <th>Plan / Salle</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($sessions as $s): ?>
+                <tr>
+                    <td><?= htmlspecialchars($s['date']) ?></td>
+                    <td>
+                        <?php if (!empty($s['time_start'])): ?>
+                            <?= substr($s['time_start'], 0, 5) ?>
+                            <?= !empty($s['time_end']) ? ' → ' . substr($s['time_end'], 0, 5) : '' ?>
+                        <?php else: ?>
+                            –
+                        <?php endif; ?>
+                    </td>
+                    <td><?= htmlspecialchars($s['class_name']) ?></td>
+                    <td><?= htmlspecialchars($s['subject'] ?? '–') ?></td>
+                    <td>
+                        <?= htmlspecialchars($s['plan_name']) ?>
+                        <small style="color:var(--color-text-muted)">(<?= htmlspecialchars($s['room_name']) ?>)</small>
+                    </td>
+                    <td>
+                        <a href="/sessions/<?= $s['id'] ?>/live" class="btn btn-sm">Ouvrir</a>
+                        <button class="btn btn-sm" onclick="deleteSession(<?= $s['id'] ?>)">Supprimer</button>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <!-- Pagination -->
+        <?php if ($totalPages > 1): ?>
+        <nav style="margin-top:1rem;display:flex;gap:.5rem;align-items:center;">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page - 1 ?>" class="btn">← Précédent</a>
+            <?php endif; ?>
+            <span>Page <?= $page ?> / <?= $totalPages ?></span>
+            <?php if ($page < $totalPages): ?>
+                <a href="?page=<?= $page + 1 ?>" class="btn">Suivant →</a>
+            <?php endif; ?>
+        </nav>
+        <?php endif; ?>
+    <?php endif; ?>        
+</div>
 
-    <!-- Pagination -->
-    <?php if ($totalPages > 1): ?>
-    <nav style="margin-top:1rem;display:flex;gap:.5rem;align-items:center;">
-        <?php if ($page > 1): ?>
-            <a href="?page=<?= $page - 1 ?>" class="btn">← Précédent</a>
-        <?php endif; ?>
-        <span>Page <?= $page ?> / <?= $totalPages ?></span>
-        <?php if ($page < $totalPages): ?>
-            <a href="?page=<?= $page + 1 ?>" class="btn">Suivant →</a>
-        <?php endif; ?>
-    </nav>
-    <?php endif; ?>
-<?php endif; ?>
+<!-- ═══ VUE SEMAINE ═══ -->
+<div id="viewWeek" hidden>
+
+    <!-- Navigation semaine -->
+    <div class="week-nav">
+        <a href="?view=week&week=<?= $prevWeek ?>" class="btn-week-nav">← Semaine préc.</a>
+        <strong><?= $weekLabel ?></strong>
+        <a href="?view=week&week=<?= $nextWeek ?>" class="btn-week-nav">Semaine suiv. →</a>
+    </div>
+
+    <!-- Grille 5 jours -->
+    <div class="week-grid">
+        <?php
+        $jours = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi'];
+        $dates = [];
+        for ($i = 0; $i < 5; $i++) {
+            $d = (new \DateTime($weekStart))->modify("+$i days");
+            $dates[] = $d->format('Y-m-d');
+        }
+
+        // Indexer les sessions par date
+        $byDate = [];
+        foreach ($weekSessions as $ws) {
+            $byDate[$ws['date']][] = $ws;
+        }
+        ?>
+        <?php foreach ($dates as $i => $d): ?>
+        <div class="week-col">
+            <div class="week-col-header">
+                <?= $jours[$i] ?><br>
+                <small><?= (new \DateTime($d))->format('d/m') ?></small>
+            </div>
+            <?php if (empty($byDate[$d])): ?>
+                <div class="week-empty">—</div>
+            <?php else: ?>
+                <?php foreach ($byDate[$d] as $ws): ?>
+                <div class="week-card" onclick="window.location='/sessions/<?= $ws['id'] ?>/live'">
+                    <div class="week-card-time">
+                        <?= $ws['time_start'] ? substr($ws['time_start'],0,5) : '' ?>
+                        <?= $ws['time_end']   ? '–'.substr($ws['time_end'],0,5) : '' ?>
+                    </div>
+                    <div class="week-card-class"><?= htmlspecialchars($ws['class_name']) ?></div>
+                    <div class="week-card-room"><?= htmlspecialchars($ws['room_name']) ?></div>
+                    <?php if ($ws['subject']): ?>
+                    <div class="week-card-subject"><?= htmlspecialchars($ws['subject']) ?></div>
+                    <?php endif ?>
+                </div>
+                <?php endforeach ?>
+            <?php endif ?>
+        </div>
+        <?php endforeach ?>
+    </div>
+</div>
+
 
 <!-- Modale nouvelle séance manuelle -->
 <div id="newSessionModal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:999;">

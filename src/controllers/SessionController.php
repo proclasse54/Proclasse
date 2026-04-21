@@ -30,6 +30,30 @@ class SessionController
         $total      = (int)$db->query("SELECT COUNT(*) FROM sessions")->fetchColumn();
         $totalPages = (int)ceil($total / $perPage);
 
+        // Semaine affichée (paramètre ?week=2025-W36, défaut = semaine courante)
+        $weekParam = $_GET['week'] ?? null;
+        if ($weekParam && preg_match('/^\d{4}-W(\d{2})$/', $weekParam, $m)) {
+            $weekDate = new \DateTime();
+            $weekDate->setISODate((int)explode('-W', $weekParam)[0], (int)$m[1]);
+        } else {
+            $weekDate = new \DateTime();
+        }
+        $weekStart = (clone $weekDate)->modify('monday this week')->format('Y-m-d');
+        $weekEnd   = (clone $weekDate)->modify('sunday this week')->format('Y-m-d');
+
+        $stmtWeek = $db->prepare("
+            SELECT se.*, sp.name as plan_name, c.name as class_name, r.name as room_name
+            FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            JOIN classes c ON c.id = sp.class_id
+            JOIN rooms r ON r.id = sp.room_id
+            WHERE se.date BETWEEN ? AND ?
+            ORDER BY se.date, se.time_start
+        ");
+        $stmtWeek->execute([$weekStart, $weekEnd]);
+        $weekSessions = $stmtWeek->fetchAll();
+        $currentWeek  = $weekDate->format('o\-\WW'); // ex: "2025-W36"        
+
         $plans = $db->query("
             SELECT sp.*, c.name as class_name, r.name as room_name
             FROM seating_plans sp
