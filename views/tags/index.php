@@ -1,7 +1,4 @@
-<?php
-$pageTitle = 'Tags — ProClasse';
-ob_start();
-?>
+
 <div class="page-header">
   <div>
     <h1>Tags</h1>
@@ -143,6 +140,3 @@ function deleteTag(id, label) {
     });
 }
 </script>
-<?php
-$content = ob_get_clean();
-require __DIR__ . '/../layouts/app.php';
