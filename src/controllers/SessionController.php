@@ -228,7 +228,40 @@ class SessionController
 
     public function apiDeleteTag(array $p): void
     {
-        Database::get()->prepare("DELETE FROM tags WHERE id = ?")->execute([$p['id']]);
+        $db = Database::get();
+
+        // Vérifier si ce tag est utilisé dans des observations
+        $stmtCheck = $db->prepare(
+            "SELECT COUNT(*) FROM observations o
+            JOIN tags t ON t.label = o.tag
+            WHERE t.id = ?"
+        );
+        $stmtCheck->execute([$p['id']]);
+        $count = (int)$stmtCheck->fetchColumn();
+
+        if ($count > 0) {
+            Response::json([
+                'error' => "Ce tag est utilisé dans $count observation(s) existante(s). Supprimez-les d'abord ou forcez la suppression.",
+                'count' => $count,
+                'can_force' => true,
+            ], 409);
+            return;
+        }
+
+        $db->prepare("DELETE FROM tags WHERE id = ?")->execute([$p['id']]);
         Response::json(['ok' => true]);
     }
+
+
+    public function tagsIndex(): void
+    {
+        $tags = Database::get()->query("SELECT * FROM tags ORDER BY sort_order")->fetchAll();
+        $pageTitle = 'Tags';
+        ob_start();
+        require ROOT . '/views/tags/index.php';
+        $content = ob_get_clean();
+        require ROOT . '/views/layouts/app.php';
+    }
+
+
 }

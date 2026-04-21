@@ -61,20 +61,24 @@ $router->add('POST',   '/api/plans/{plan_id}/assignments',  fn($p)=> (new ClassC
 $router->add('DELETE', '/api/plans/{plan_id}',              fn($p)=> (new ClassController)->apiDeletePlan($p));
 
 // Séances
-$router->add('GET',    '/sessions',                                         fn()  => (new SessionController)->index());
-$router->add('GET',    '/sessions/{id}/live',                               fn($p)=> (new SessionController)->live($p));
-$router->add('POST',   '/api/sessions',                                     fn()  => (new SessionController)->apiCreate());
-$router->add('POST',   '/api/sessions/import-ics',                          fn()  => (new IcsImportController)->apiImportIcs());
-$router->add('DELETE', '/api/sessions/{id}',                                fn($p)=> (new SessionController)->apiDelete($p));
-$router->add('GET',    '/api/sessions/{id}/observations',                   fn($p)=> (new SessionController)->apiGetObservations($p));
-$router->add('POST',   '/api/sessions/{id}/observations',                   fn($p)=> (new SessionController)->apiAddObservation($p));
-$router->add('DELETE', '/api/sessions/{id}/observations/{obs_id}',          fn($p)=> (new SessionController)->apiRemoveObservation($p));
-$router->add('GET',    '/api/tags',                                         fn()  => (new SessionController)->apiGetTags());
-$router->add('POST',   '/api/tags',                                         fn()  => (new SessionController)->apiSaveTag());
-$router->add('DELETE', '/api/tags/{id}',                                    fn($p)=> (new SessionController)->apiDeleteTag($p));
+$router->add('GET',    '/sessions',                         fn()  => (new SessionController)->index());
+$router->add('GET',    '/sessions/{id}/live',               fn($p)=> (new SessionController)->live($p));
+$router->add('POST',   '/api/sessions',                     fn()  => (new SessionController)->apiCreate());
+$router->add('POST',   '/api/sessions/import-ics',          fn()  => (new IcsImportController)->apiImportIcs());
+$router->add('DELETE', '/api/sessions/{id}',                fn($p)=> (new SessionController)->apiDelete($p));
+$router->add('GET',    '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiGetObservations($p));
+$router->add('POST',   '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiAddObservation($p));
+$router->add('DELETE', '/api/sessions/{id}/observations/{obs_id}',  fn($p)=> (new SessionController)->apiRemoveObservation($p));
+$router->add('GET',    '/api/tags',                         fn()  => (new SessionController)->apiGetTags());
+$router->add('POST',   '/api/tags',                         fn()  => (new SessionController)->apiSaveTag());
+$router->add('DELETE', '/api/tags/{id}',                    fn($p)=> (new SessionController)->apiDeleteTag($p));
 
 // Racine
-$router->add('GET', '/', fn() => Response::redirect('/sessions'));
+$router->add('GET',     '/',                                fn()  => Response::redirect('/sessions'));
+
+// Tags
+$router->add('GET',     '/tags',                            fn()  => (new SessionController)->tagsIndex());
+$router->add('POST',    '/api/tags',                        fn()  => (new SessionController)->apiSaveTag());
 
 // ── Dispatch ──────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];
