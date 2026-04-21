@@ -16,14 +16,18 @@ class SessionController
         $offset  = ($page - 1) * $perPage;
 
         $stmt = $db->prepare("
-            SELECT se.*, sp.name as plan_name, c.name as class_name, r.name as room_name
+            SELECT se.*, sp.name AS plan_name,
+                COALESCE(g.name, c.name) AS class_name,
+                r.name AS room_name
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
             JOIN rooms r ON r.id = sp.room_id
             ORDER BY se.date DESC, se.time_start DESC, se.created_at DESC
             LIMIT ? OFFSET ?
         ");
+
         $stmt->execute([(int)$perPage, (int)$offset]);
         $sessions = $stmt->fetchAll();
 
@@ -42,10 +46,14 @@ class SessionController
         $weekEnd   = (clone $weekDate)->modify('sunday this week')->format('Y-m-d');
 
         $stmtWeek = $db->prepare("
-            SELECT se.*, sp.name as plan_name, c.name as class_name, r.name as room_name
+            SELECT se.*,
+                sp.name AS plan_name,
+                COALESCE(g.name, c.name) AS class_name,
+                r.name AS room_name
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
             JOIN rooms r ON r.id = sp.room_id
             WHERE se.date BETWEEN ? AND ?
             ORDER BY se.date, se.time_start

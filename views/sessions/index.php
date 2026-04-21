@@ -199,7 +199,7 @@ function setView(v) {
     history.replaceState(null, '', url);
 }
 // Restaurer la vue depuis l'URL au chargement
-setView(new URLSearchParams(location.search).get('view') || 'list');
+setView(new URLSearchParams(location.search).get('view') || 'week');
 
 // ── Modal & CRUD ────────────────────────────────────────────
 function openNewSessionModal() {
