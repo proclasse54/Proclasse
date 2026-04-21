@@ -310,24 +310,33 @@ class IcsImportController
         return $events;
     }
 
-    // parseSummary plus robuste — le dernier segment est la classe
     private function parseSummary(string $summary): array
     {
-        $parts = array_map('trim', explode(' - ', $summary));
-        if (count($parts) < 2) {
-            return [null, null];
+        // Stratégie 1 : chercher le dernier <...> ou [...] dans la chaîne entière
+        // Supporte les noms de groupes contenant " - "
+        if (preg_match('/[\[<]([^\]>]+)[\]>]\s*$/', $summary, $m)) {
+            // Le sujet = tout ce qui précède le premier " - [" ou " - <"
+            $subject = preg_replace('/\s*[-–]\s*[\[<][^\]>]+[\]>]\s*$/', '', $summary);
+            // Si le subject contient encore un groupe (cas "MAT - [GR] - <GR>"), retirer aussi
+            $subject = preg_replace('/\s*[-–]\s*[\[<][^\]>]+[\]>]\s*$/', '', $subject);
+            // Retirer un éventuel " - NomClasse" final résiduel si sujet = juste la matière
+            // => ne prendre que la partie avant le premier " - "
+            $subjectParts = explode(' - ', $subject);
+
+            return [trim($subjectParts[0]) ?: null, trim($m[1]) ?: null];
         }
 
-        // Le sujet est le premier segment, la classe est le dernier
-        $subject  = $parts[0];
-        $rawClass = trim(end($parts), '[]<>');
-
-        // Si plusieurs classes séparées par virgule, prendre la première
-        if (str_contains($rawClass, ',')) {
-            $rawClass = trim(explode(',', $rawClass)[0]);
+        // Stratégie 2 : format "MATIERE - CLASSE" sans crochets (classe entière)
+        $dashPos = strpos($summary, ' - ');
+        if ($dashPos !== false) {
+            $subject = trim(substr($summary, 0, $dashPos));
+            $rawClass = trim(substr($summary, $dashPos + 3));
+            // Nettoyer les éventuels crochets résiduels
+            $rawClass = trim($rawClass, '[]<>()');
+            return [$subject ?: null, $rawClass ?: null];
         }
 
-        return [$subject ?: null, $rawClass ?: null];
+        return [null, null];
     }
 
     private function icsDateToLocal(string $icsDate, ?string $tzid = null): ?\DateTime
