@@ -142,8 +142,17 @@ class SessionController
 
     public function apiDelete(array $p): void
     {
-        Database::get()->prepare("DELETE FROM sessions WHERE id = ?")->execute([$p['id']]);
-        Response::json(['ok' => true]);
+        $db = Database::get();
+        $db->beginTransaction();
+        try {
+            $db->prepare("DELETE FROM observations WHERE session_id = ?")->execute([$p['id']]);
+            $db->prepare("DELETE FROM sessions WHERE id = ?")->execute([$p['id']]);
+            $db->commit();
+            Response::json(['ok' => true]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            Response::json(['error' => 'Erreur lors de la suppression'], 500);
+        }
     }
 
     public function apiAddObservation(array $p): void
