@@ -15,15 +15,17 @@ class SessionController
         $perPage = 100;
         $offset  = ($page - 1) * $perPage;
 
-        $sessions = $db->query("
+        $stmt = $db->prepare("
             SELECT se.*, sp.name as plan_name, c.name as class_name, r.name as room_name
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
             JOIN rooms r ON r.id = sp.room_id
             ORDER BY se.date DESC, se.time_start DESC, se.created_at DESC
-            LIMIT ".(int)$perPage." OFFSET ".(int)$offset."
-        ")->fetchAll();
+            LIMIT ? OFFSET ?
+        ");
+        $stmt->execute([(int)$perPage, (int)$offset]);
+        $sessions = $stmt->fetchAll();
 
         $total      = (int)$db->query("SELECT COUNT(*) FROM sessions")->fetchColumn();
         $totalPages = (int)ceil($total / $perPage);
