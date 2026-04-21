@@ -12,6 +12,7 @@ ob_start();
 <div class="tabs">
   <button class="tab active" onclick="showTab('students', this)">Élèves (<?= count($students) ?>)</button>
   <button class="tab" onclick="showTab('plans', this)">Plans de salle (<?= count($plans) ?>)</button>
+  <button class="tab" onclick="showTab('groups', this)">Groupes (<?= count($groups) ?>)</button>
 </div>
 
 <!-- ── Onglet Élèves ─────────────────────────────────────── -->
@@ -67,6 +68,33 @@ ob_start();
       <div class="card-footer">
         <a href="/plans/<?= $pl['id'] ?>/edit" class="btn btn-sm btn-primary">Placer élèves</a>
         <button class="btn btn-sm btn-danger" onclick="deletePlan(<?= $pl['id'] ?>)">Supprimer</button>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+</div>
+
+<!-- ── Onglet Groupes ────────────────────────────────── -->
+<div id="tab-groups" class="tab-content" hidden>
+  <?php if (empty($groups)): ?>
+  <div class="empty-state">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+    <h3>Aucun groupe</h3>
+    <p>Les groupes sont importés automatiquement depuis Pronote (colonne "Groupes").</p>
+  </div>
+  <?php else: ?>
+  <div class="cards-grid">
+    <?php foreach ($groups as $g): ?>
+    <div class="card">
+      <div class="card-body">
+        <div class="card-title"><?= htmlspecialchars($g['name']) ?></div>
+        <div class="card-meta"><?= $g['student_count'] ?> élève<?= $g['student_count'] > 1 ? 's' : '' ?></div>
       </div>
     </div>
     <?php endforeach; ?>

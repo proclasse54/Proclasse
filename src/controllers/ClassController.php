@@ -38,6 +38,17 @@ class ClassController {
         $stmtPlans = $db->prepare("SELECT sp.*, r.name as room_name FROM seating_plans sp JOIN rooms r ON r.id=sp.room_id WHERE sp.class_id=?");
         $stmtPlans->execute([$p['id']]);
         $plans = $stmtPlans->fetchAll();
+        
+        $stmtGroups = $db->prepare("
+            SELECT g.*, COUNT(gs.student_id) as student_count
+            FROM `groups` g
+            LEFT JOIN group_students gs ON gs.group_id = g.id
+            WHERE g.class_id = ?
+            GROUP BY g.id
+            ORDER BY g.name
+        ");
+        $stmtGroups->execute([$p['id']]);
+        $groups = $stmtGroups->fetchAll();
 
         $pageTitle = htmlspecialchars($class['name']);
         ob_start();

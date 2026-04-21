@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS `groups` (
     class_id INT DEFAULT NULL,
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_group_name (name),
+    UNIQUE KEY uq_group_name (class_id, name),
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
