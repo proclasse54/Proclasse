@@ -231,7 +231,7 @@ CREATE TABLE IF NOT EXISTS `groups` (
     name VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_group_name (class_id, name),
-    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS group_students (

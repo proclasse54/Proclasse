@@ -92,20 +92,45 @@ class IcsImportController
             }
 
             // --- Trouver ou créer un plan ---
-            $stmtPlan = $db->prepare(
-                "SELECT id FROM seating_plans WHERE class_id = ? LIMIT 1"
-            );
-            $stmtPlan->execute([$class['id']]);
+            // Si c'est un groupe, chercher un plan lié à ce groupe
+            // Sinon, chercher un plan lié à la classe entière (group_id NULL)
+            if ($group) {
+                $stmtPlan = $db->prepare(
+                    "SELECT id FROM seating_plans 
+                    WHERE class_id = ? AND group_id = ? 
+                    LIMIT 1"
+                );
+                $stmtPlan->execute([$class['id'], $group['id']]);
+            } else {
+                $stmtPlan = $db->prepare(
+                    "SELECT id FROM seating_plans 
+                    WHERE class_id = ? AND group_id IS NULL 
+                    LIMIT 1"
+                );
+                $stmtPlan->execute([$class['id']]);
+            }
             $plan = $stmtPlan->fetch();
 
             if (!$plan) {
-                $planId = $this->createRandomPlan($db, $class['id'], $className);
-                if (!$planId) {
-                    $errors[] = "Impossible de créer un plan pour : $className (pas d'élèves ou de salle ?)";
-                    continue;
+                if ($group) {
+                    // Pas de plan pour ce groupe → on le signale mais on n'ignore pas la séance
+                    // On prend le premier plan de la classe par défaut
+                    $stmtPlanFallback = $db->prepare(
+                        "SELECT id FROM seating_plans WHERE class_id = ? LIMIT 1"
+                    );
+                    $stmtPlanFallback->execute([$class['id']]);
+                    $plan = $stmtPlanFallback->fetch();
                 }
-                $plan = ['id' => $planId];
-                $created++;
+
+                if (!$plan) {
+                    $planId = $this->createRandomPlan($db, $class['id'], $className, $group ? (int)$group['id'] : null);
+                    if (!$planId) {
+                        $errors[] = "Impossible de créer un plan pour : $className (pas d'élèves ou de salle ?)";
+                        continue;
+                    }
+                    $plan = ['id' => $planId];
+                    $created++;
+                }
             }
 
             // --- Déduplication sur plan_id + date + time_start ---
@@ -141,13 +166,23 @@ class IcsImportController
     // Création d'un plan aléatoire
     // ------------------------------------------------------------------
 
-    private function createRandomPlan(\PDO $db, int $classId, string $className): ?int
+    private function createRandomPlan(\PDO $db, int $classId, string $className, ?int $groupId = null): ?int
     {
-        // 1. Récupérer les élèves
-        $stmtStudents = $db->prepare(
-            "SELECT id FROM students WHERE class_id = ? ORDER BY id"
-        );
-        $stmtStudents->execute([$classId]);
+        // 1. Récupérer les élèves — du groupe si précisé, sinon de toute la classe
+        if ($groupId) {
+            $stmtStudents = $db->prepare(
+                "SELECT s.id FROM students s
+                JOIN group_students gs ON gs.student_id = s.id
+                WHERE gs.group_id = ?
+                ORDER BY s.id"
+            );
+            $stmtStudents->execute([$groupId]);
+        } else {
+            $stmtStudents = $db->prepare(
+                "SELECT id FROM students WHERE class_id = ? ORDER BY id"
+            );
+            $stmtStudents->execute([$classId]);
+        }
         $studentIds = $stmtStudents->fetchAll(\PDO::FETCH_COLUMN);
 
         if (empty($studentIds)) {
@@ -159,21 +194,19 @@ class IcsImportController
         // 2. Chercher une salle avec assez de sièges
         $stmtRoom = $db->prepare(
             "SELECT r.id FROM rooms r
-             INNER JOIN seats s ON s.room_id = r.id
-             GROUP BY r.id
-             HAVING COUNT(s.id) >= ?
-             ORDER BY COUNT(s.id) ASC
-             LIMIT 1"
+            INNER JOIN seats s ON s.room_id = r.id
+            GROUP BY r.id
+            HAVING COUNT(s.id) >= ?
+            ORDER BY COUNT(s.id) ASC
+            LIMIT 1"
         );
         $stmtRoom->execute([$count]);
         $room = $stmtRoom->fetch();
 
-        // Sinon, prendre la première salle dispo
         if (!$room) {
             $room = $db->query("SELECT id FROM rooms ORDER BY id LIMIT 1")->fetch();
         }
 
-        // Toujours rien → créer une salle 5×6 par défaut
         if (!$room) {
             $db->prepare(
                 "INSERT INTO rooms (name, `rows`, `cols`) VALUES (?, 5, 6)"
@@ -185,28 +218,25 @@ class IcsImportController
 
         $roomId = (int)$room['id'];
 
-        // 3. Créer le plan
+        // 3. Créer le plan — avec group_id si c'est un plan de groupe
         $db->prepare(
-            "INSERT INTO seating_plans (class_id, room_id, name) VALUES (?, ?, ?)"
-        )->execute([$classId, $roomId, "Plan aléatoire – $className"]);
+            "INSERT INTO seating_plans (class_id, group_id, room_id, name) VALUES (?, ?, ?, ?)"
+        )->execute([$classId, $groupId, $roomId, "Plan aléatoire – $className"]);
         $planId = (int)$db->lastInsertId();
 
-        // 4. Récupérer les sièges de la salle
+        // 4. Récupérer les sièges
         $stmtSeats = $db->prepare(
             "SELECT id FROM seats WHERE room_id = ? ORDER BY row_index, col_index"
         );
         $stmtSeats->execute([$roomId]);
         $seatIds = $stmtSeats->fetchAll(\PDO::FETCH_COLUMN);
 
-        if (empty($seatIds)) {
-            return null;
-        }
+        if (empty($seatIds)) { return null; }
 
-        // 5. Mélange aléatoire
+        // 5. Mélange et affectation
         shuffle($studentIds);
         shuffle($seatIds);
 
-        // 6. Affecter élèves → sièges
         $stmtAssign = $db->prepare(
             "INSERT INTO seating_assignments (plan_id, seat_id, student_id) VALUES (?, ?, ?)"
         );
