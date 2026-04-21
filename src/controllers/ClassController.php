@@ -50,10 +50,6 @@ class ClassController {
         $stmtGroups->execute([$p['id']]);
         $groups = $stmtGroups->fetchAll();
 
-        // DEBUG TEMPORAIRE - à supprimer après
-        error_log("class_id=" . $p['id'] . " groups=" . count($groups));
-        error_log(print_r($groups, true));
-
         $pageTitle = htmlspecialchars($class['name']);
         ob_start();
         require ROOT . '/views/classes/show.php';
