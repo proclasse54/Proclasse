@@ -145,8 +145,8 @@ function refreshTags(studentId) {
       const mine = obs.filter(o => o.student_id == studentId);
       container.innerHTML = mine.map(o =>
         `<span class="tag-chip" style="background:${o.color||'#888'}"
-               onclick="event.stopPropagation();removeObs(${o.id},${studentId})"
-               title="Retirer">${o.icon||''}</span>`
+              onclick="event.stopPropagation();removeObs(${o.id},${studentId})"
+              title="Retirer">${(o.icon ? o.icon + ' ' : '') + (o.tag || '')}</span>`
       ).join('');
     });
 }

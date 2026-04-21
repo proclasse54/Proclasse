@@ -84,8 +84,16 @@ class RoomController {
             Response::json(['error' => 'Des séances utilisent cette salle'], 409);
             return;
         }
-        $db->prepare("DELETE FROM rooms WHERE id=?")->execute([$p['id']]);
-        Response::json(['ok' => true]);
+        $db->beginTransaction();
+        try {
+            $db->prepare("DELETE FROM seats WHERE room_id = ?")->execute([$p['id']]);
+            $db->prepare("DELETE FROM rooms WHERE id = ?")->execute([$p['id']]);
+            $db->commit();
+            Response::json(['ok' => true]);
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            Response::json(['error' => 'Erreur lors de la suppression'], 500);
+        }
     }
 
 }
