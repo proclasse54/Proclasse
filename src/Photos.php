@@ -21,7 +21,13 @@ function removeAccents(string $str): string {
  */
 function getPhotoUrl(string $classe, string $nom, string $prenom): ?string {
     $prenomFichier = removeAccents($prenom);
-    // Le NOM est déjà en majuscules sans accents dans Pronote
-    $fichier = "/data/photos_eleves/{$classe}.{$nom}.{$prenomFichier}.jpg";
-    return file_exists($fichier) ? "/data/photos_eleves/{$classe}.{$nom}.{$prenomFichier}.jpg" : null;
+    
+    // Chemin absolu réel sur le serveur
+    $cheminAbsolu = '/var/www/sub-domains/proclasse/data/photos_eleves/' 
+                    . "{$classe}.{$nom}.{$prenomFichier}.jpg";
+    
+    // URL publique retournée au navigateur
+    $urlPublique = "/data/photos_eleves/{$classe}.{$nom}.{$prenomFichier}.jpg";
+    
+    return file_exists($cheminAbsolu) ? $urlPublique : null;
 }
