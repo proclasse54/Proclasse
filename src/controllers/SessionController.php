@@ -302,41 +302,50 @@ class SessionController
         $studentId    = (int)($data['student_id']    ?? 0);
         $sourceSeatId = (int)($data['source_seat_id'] ?? 0);
         $targetSeatId = (int)($data['target_seat_id'] ?? 0);
+        $sessionId    = (int)$p['id'];
 
-        if (!$studentId || !$sourceSeatId || !$targetSeatId) {
+        if (!$studentId || !$sourceSeatId || !$targetSeatId || !$sessionId) {
             Response::json(['error' => 'Paramètres manquants'], 400);
             return;
         }
 
         $db = Database::get();
 
+        // Récupérer le plan_id de la séance (comme dans live())
+        $planId = (int)$db->prepare("SELECT plan_id FROM sessions WHERE id = ?")
+            ->execute([$sessionId]) 
+            ?: null;
+
+        // Correction : utiliser fetch() après execute
+        $stmt = $db->prepare("SELECT plan_id FROM sessions WHERE id = ?");
+        $stmt->execute([$sessionId]);
+        $planId = (int)$stmt->fetchColumn();
+
+        if (!$planId) {
+            Response::json(['error' => 'Séance introuvable'], 404);
+            return;
+        }
+
         try {
             $db->beginTransaction();
 
-            // Récupérer l'élève éventuellement présent sur la cible (pour permutation)
+            // Élève éventuellement présent sur la cible (pour permutation)
             $stmt = $db->prepare("
-                SELECT sa.student_id
-                FROM seating_assignments sa
-                WHERE sa.seat_id = ? AND sa.plan_id = (
-                    SELECT plan_id FROM sessions WHERE id = ?
-                )
+                SELECT student_id FROM seating_assignments
+                WHERE seat_id = ? AND plan_id = ?
             ");
-            $stmt->execute([$targetSeatId, $p['id']]);
-            $targetStudentId = $stmt->fetchColumn();
-            $targetStudentId = $targetStudentId !== false ? (int)$targetStudentId : null;
+            $stmt->execute([$targetSeatId, $planId]);
+            $row = $stmt->fetch();
+            $targetStudentId = $row ? (int)$row['student_id'] : null;
 
-            $planId = (int)$db->query(
-                "SELECT plan_id FROM sessions WHERE id = " . (int)$p['id']
-            )->fetchColumn();
-
-            // Déplacer l'élève source sur la cible
+            // Déplacer l'élève source → cible
             $db->prepare("
                 UPDATE seating_assignments
                 SET seat_id = ?
                 WHERE seat_id = ? AND plan_id = ? AND student_id = ?
             ")->execute([$targetSeatId, $sourceSeatId, $planId, $studentId]);
 
-            // Si permutation : mettre l'ancien élève cible sur la source
+            // Si un élève était sur la cible → le mettre sur la source (permutation)
             if ($targetStudentId) {
                 $db->prepare("
                     UPDATE seating_assignments
