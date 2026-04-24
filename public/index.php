@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('ROOT', dirname(__DIR__));
 
 
-require ROOT . '/../src/Photos.php';
+require ROOT . '/src/Photos.php';
 
 
 // ── Config ────────────────────────────────────────────────────
