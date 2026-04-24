@@ -628,11 +628,6 @@ emoji-picker {
 
 
 
-
-
-
-
-
 .seat-photo {
     width: 50%;
     aspect-ratio: 1;
@@ -653,4 +648,58 @@ emoji-picker {
     color: var(--color-text-muted, #888);
     border-radius: var(--radius-sm, 4px);
     text-transform: uppercase;
+}
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   ProClasse — Patch Drag & Drop (à ajouter à la fin de app.css)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Siège survolé pendant un glissement ─────────────────────── */
+.plan-seat.drag-over {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 30%, transparent);
+  transform: scale(1.04);
+}
+
+/* ── Siège en cours de glissement (source) ───────────────────── */
+.plan-seat.dragging {
+  opacity: 0.4;
+  transform: scale(0.96);
+}
+
+/* ── Élève en cours de glissement (liste) ────────────────────── */
+.plan-student.dragging {
+  opacity: 0.4;
+  background: var(--divider);
+}
+
+/* ── Curseur grab sur les éléments draggables ────────────────── */
+.plan-student[draggable="true"] {
+  cursor: grab;
+}
+.plan-student[draggable="true"]:active {
+  cursor: grabbing;
+}
+.plan-seat.assigned[draggable="true"] {
+  cursor: grab;
+}
+.plan-seat.assigned[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* ── Indication visuelle sur les sièges libres (drop possible) ── */
+/*.plan-seat.free {*/
+  /* légère animation de pulsation quand un drag est en cours  */
+  /* activée via .drag-active sur #planRoom                    */
+/*}*/
+
+
+/* ── Indication visuelle sur les sièges libres (drop possible) ── */
+#planRoom.drag-active .plan-seat.free:not(.inactive) {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--primary) 60%, var(--border));
+  background: color-mix(in oklab, var(--primary) 5%, var(--surface-2));
 }
