@@ -73,6 +73,7 @@ $router->add('DELETE', '/api/sessions/{id}',                fn($p)=> (new Sessio
 $router->add('GET',    '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiGetObservations($p));
 $router->add('POST',   '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiAddObservation($p));
 $router->add('DELETE', '/api/sessions/{id}/observations/{obs_id}',  fn($p)=> (new SessionController)->apiRemoveObservation($p));
+$router->add('POST',   '/api/sessions/{id}/move-seat',      fn($p)=> (new SessionController)->apiMoveSeat($p));
 $router->add('GET',    '/api/tags',                         fn()  => (new SessionController)->apiGetTags());
 $router->add('POST',   '/api/tags',                         fn()  => (new SessionController)->apiSaveTag());
 $router->add('DELETE', '/api/tags/{id}',                    fn($p)=> (new SessionController)->apiDeleteTag($p));

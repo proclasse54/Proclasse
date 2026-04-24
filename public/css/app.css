@@ -703,3 +703,35 @@ emoji-picker {
   border-color: color-mix(in oklab, var(--primary) 60%, var(--border));
   background: color-mix(in oklab, var(--primary) 5%, var(--surface-2));
 }
+
+
+
+
+/* ── Drag & drop live session ─────────────────────────────── */
+.live-seat.drag-over {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  transform: scale(1.03);
+}
+
+.live-seat.dragging {
+  opacity: 0.4;
+}
+
+#liveRoom.drag-active .live-seat:not(.inactive) {
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition), opacity var(--transition);
+}
+
+#liveRoom.drag-active .live-seat.empty:not(.inactive) {
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--primary) 60%, var(--border));
+  background: color-mix(in oklab, var(--primary) 6%, var(--surface-2));
+}
+
+.live-seat.occupied[draggable="true"] {
+  cursor: grab;
+}
+
+.live-seat.occupied[draggable="true"]:active {
+  cursor: grabbing;
+}
