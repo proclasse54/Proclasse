@@ -30,63 +30,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['pdf'])) {
 
         foreach ($pdf->getPages() as $pageNum => $page) {
 
-            // ── 1. Récupérer les images de la page ───────────────────
-            $images = [];
+            // ── 1. Récupérer l'image de la page ──────────────────────
+            $imageData = null;
             foreach ($page->getXObjects() as $name => $xobj) {
                 if (!preg_match('/^wpt\d+$/i', $name)) continue;
                 if (method_exists($xobj, 'getDetails')) {
                     $details = $xobj->getDetails();
                     if (($details['Subtype'] ?? '') === 'Image') {
-                        $images[$name] = $xobj->getContent();
+                        $imageData = $xobj->getContent();
+                        break; // une seule photo par page
                     }
                 }
             }
-            if (empty($images)) continue;
+            if ($imageData === null) continue;
 
-            // ── 2. Extraire le texte de la page ligne par ligne ───────
-            // smalot/pdfparser regroupe le texte par page
-            $texte = $page->getText();
+            // ── 2. Extraire le texte ──────────────────────────────────
+            // smalot retourne un bloc unique : "4D\nARRAGONI Charlotte"
+            $texte = trim($page->getText());
 
-            // Nettoyer et découper en lignes
+            // Supprimer la ligne copyright
+            $texte = preg_replace('/©.*$/m', '', $texte);
+
+            // Découper en lignes non vides
             $lignes = array_values(array_filter(
                 array_map('trim', explode("\n", $texte)),
                 fn($l) => $l !== ''
-                       && strpos($l, 'Index Education') === false
-                       && !preg_match('/^\d{4}$/', $l)
-                       && !preg_match('/^©/', $l)
             ));
 
-            // ── 3. Parser : Classe sur une ligne, NOM Prénom sur la suivante ──
-            // Structure Pronote (une photo par page) :
-            //   ligne 0 : "4D"
-            //   ligne 1 : "DE MOURA Rebecca"  ← dernier mot = prénom
-            $classe    = '';
-            $nomPrenom = '';
+            // lignes[0] = "4D"
+            // lignes[1] = "DE MOURA Rebecca"
+            if (count($lignes) < 2) continue;
 
-            foreach ($lignes as $ligne) {
-                // Ligne de classe : chiffre + lettre(s) ex "4D", "3BIS", "4 A"
-                if (preg_match('/^\d\s*[A-Z]{1,3}$/', $ligne)) {
-                    $classe = preg_replace('/\s+/', '', $ligne); // "4 A" → "4A"
-                    $nomPrenom = '';
-                    continue;
-                }
-                // Ligne NOM Prénom : si on a déjà la classe
-                if ($classe !== '' && $nomPrenom === '') {
-                    $nomPrenom = trim($ligne);
-                }
-            }
-
-            if ($classe === '' || $nomPrenom === '') continue;
+            $classe    = preg_replace('/\s+/', '', strtoupper($lignes[0])); // "4 A" → "4A"
+            $nomPrenom = trim($lignes[1]);
 
             // Dernier mot = Prénom, tout le reste = NOM
             $mots   = preg_split('/\s+/', $nomPrenom);
             $prenom = array_pop($mots);
             $nom    = implode(' ', $mots);
 
-            if ($nom === '' || $prenom === '') continue;
-
-            // ── 4. Associer à la première image de la page ────────────
-            $imageData = reset($images);
+            if ($classe === '' || $nom === '' || $prenom === '') continue;
 
             $eleves[] = [
                 'classe'    => $classe,
@@ -96,16 +79,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['pdf'])) {
             ];
         }
 
-        // ── 5. Sauvegarder les photos ─────────────────────────────────
+        // ── 3. Sauvegarder les photos ─────────────────────────────────
         foreach ($eleves as $e) {
             $classeFichier = nettoyerChaine($e['classe']);
             $nomFichier    = nettoyerChaine(strtoupper($e['nom']));
             $prenomFichier = nettoyerChaine($e['prenom']);
             $ext           = substr($e['imageData'], 0, 2) === "\xFF\xD8" ? 'jpg' : 'png';
 
-            $imageFinale = rognerPortrait($e['imageData']);
             $dest = $outputDir . $classeFichier . '.' . $nomFichier . '.' . $prenomFichier . '.' . $ext;
-            file_put_contents($dest, $imageFinale);
+            file_put_contents($dest, rognerPortrait($e['imageData']));
         }
     }
 }
@@ -114,11 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['pdf'])) {
 // FONCTIONS
 // ════════════════════════════════════════════════════════════════════
 
-/**
- * Supprime les accents et caractères spéciaux pour le nom de fichier.
- * Conserve les tirets (noms/prénoms composés).
- * "DE MOURA" → "DE-MOURA", "Marie-Claire" → "Marie-Claire"
- */
 function nettoyerChaine(string $str): string
 {
     if (class_exists('Normalizer')) {
@@ -127,16 +104,10 @@ function nettoyerChaine(string $str): string
     } else {
         $str = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $str);
     }
-    // Espaces → tirets pour noms composés
     $str = preg_replace('/\s+/', '-', trim($str));
-    // Garder lettres, chiffres, tirets uniquement
     return preg_replace('/[^a-zA-Z0-9\-]/', '', $str);
 }
 
-/**
- * Rogne légèrement les bords de la photo portrait Pronote.
- * Ajustez les pourcentages selon le rendu visuel.
- */
 function rognerPortrait(string $imageData): string
 {
     $img = imagecreatefromstring($imageData);
