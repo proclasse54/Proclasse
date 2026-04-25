@@ -3,15 +3,15 @@ declare(strict_types=1);
 
 define('ROOT', dirname(__DIR__));
 
-
 require ROOT . '/src/Photos.php';
+require_once ROOT . '/src/Auth.php';
+require_once ROOT . '/src/Logger.php';
 
-
-// ── Config ────────────────────────────────────────────────────
+// ── Config ──────────────────────────────────────────────
 $appCfg = require ROOT . '/config/app.php';
 date_default_timezone_set($appCfg['timezone'] ?? 'Europe/Paris');
 
-// ── Autoload ──────────────────────────────────────────────────
+// ── Autoload ──────────────────────────────────────────
 spl_autoload_register(function (string $class): void {
     $paths = [
         ROOT . '/src/' . $class . '.php',
@@ -23,19 +23,49 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
-// ── Erreurs ───────────────────────────────────────────────────
+// ── Gestion des erreurs ─────────────────────────────────
 if ($appCfg['debug'] ?? false) {
     ini_set('display_errors', '1');
     error_reporting(E_ALL);
 } else {
     ini_set('display_errors', '0');
     set_exception_handler(function (Throwable $e): void {
+        Logger::critical('system', 'uncaught_exception', [
+            'message' => $e->getMessage(),
+            'file'    => $e->getFile(),
+            'line'    => $e->getLine(),
+        ]);
         http_response_code(500);
         require ROOT . '/views/500.php';
     });
 }
 
-// ── Router ────────────────────────────────────────────────────
+// ── Session ─────────────────────────────────────────────
+Auth::start();
+
+// ── Routes PUBLIQUES (sans Auth::check) ──────────────────
+// /login, /logout et /install sont enregistrées à l'étape 4 (AuthController).
+// /photo est publique : les photos élèves peuvent être affichées sans login
+// (la sécurité repose sur l'URL non-devinable Classe.Nom.Prenom.jpg)
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$method = $_SERVER['REQUEST_METHOD'];
+
+$publicRoutes = ['/login', '/logout', '/install', '/photo'];
+$isPublic = false;
+foreach ($publicRoutes as $pub) {
+    if ($uri === $pub || str_starts_with($uri, $pub . '?')) {
+        $isPublic = true;
+        break;
+    }
+}
+
+// ── Protection globale ──────────────────────────────────
+// Toutes les routes non-publiques nécessitent d'être connecté.
+if (!$isPublic) {
+    Auth::check();
+}
+
+// ── Router ─────────────────────────────────────────────
 $router = new Router();
 
 // Salles
@@ -58,6 +88,7 @@ $router->add('POST',   '/api/classes/{id}/import-paste',    fn($p)=> (new ClassC
 $router->add('POST',   '/api/classes/{id}/import',          fn($p)=> (new ClassController)->apiImportStudents($p));
 $router->add('GET',    '/api/classes/{id}/students',        fn($p)=> (new ClassController)->apiGetStudents($p));
 $router->add('POST',   '/api/classes/{id}/plans',           fn($p)=> (new ClassController)->apiSavePlan($p));
+
 // Plans
 $router->add('GET',    '/plans/{plan_id}/edit',             fn($p)=> (new ClassController)->planEdit($p));
 $router->add('GET',    '/api/plans/{plan_id}',              fn($p)=> (new ClassController)->apiGetPlan($p));
@@ -82,11 +113,11 @@ $router->add('DELETE', '/api/tags/{id}',                    fn($p)=> (new Sessio
 $router->add('GET',    '/api/students/{id}',                fn($p)=> (new StudentController)->apiGet($p));
 $router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}', fn($p)=> (new SessionController)->apiRemoveStudent($p));
 
-// Imports (pronote):
+// Imports
 $router->add('GET',     '/import',                          fn($p) => (new ImportController)->index($p));
 $router->add('POST',    '/import/photos',                   fn($p) => (new ImportController)->photos($p));
 
-// Photos élèves :
+// Photos élèves
 $router->add('GET',     '/photo',                           fn() => (new PhotoController)->serve());
 
 // Racine
@@ -95,7 +126,5 @@ $router->add('GET',     '/',                                fn()  => Response::r
 // Tags
 $router->add('GET',    '/tags',                             fn()  => (new SessionController)->tagsIndex());
 
-// ── Dispatch ──────────────────────────────────────────────────
-$method = $_SERVER['REQUEST_METHOD'];
-$uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+// ── Dispatch ─────────────────────────────────────────────
 $router->dispatch($method, $uri);
