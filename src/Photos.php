@@ -19,20 +19,16 @@ function removeAccents(string $str): string {
  * Retourne l'URL de la photo d'un élève, ou null si absente.
  * Format fichier : CLASSE.NOM.Prenom.jpg
  */
-function getPhotoUrl(string $classe, string $nom, string $prenom): ?string {
-
+function getPhotoPath(string $classe, string $nom, string $prenom): ?string
+{
     $classeFichier = nettoyerChaine($classe);
     $nomFichier    = nettoyerChaine(mb_strtoupper($nom, 'UTF-8'));
     $prenomFichier = removeAccents(nettoyerChaine($prenom));
-    
-    // Chemin absolu réel sur le serveur
-    $cheminAbsolu = '/var/www/sub-domains/proclasse/public/data/photos_eleves/' 
-                    . "{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
-    
-    // URL publique retournée au navigateur
-    $urlPublique = "/data/photos_eleves/{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
-    
-    return file_exists($cheminAbsolu) ? $urlPublique : null;
+
+    $path = '/var/www/sub-domains/proclasse/public/data/photos_eleves/'
+          . "{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
+
+    return file_exists($path) ? $path : null;
 }
 
 function nettoyerChaine(string $str): string

@@ -48,11 +48,7 @@ ob_start();
                  <?= $seat['student_id'] ? 'draggable="true"' : '' ?>>
               <?php if ($seat['student_id']): ?>
                 <?php
-                  $photoUrl = getPhotoUrl(
-                    $session['class_name'],
-                    $seat['last_name'],
-                    $seat['first_name']
-                  );
+                  $photoUrl = $seat['student_id'] ? '/photo?student_id=' . (int)$seat['student_id'] : null;
                 ?>
                 <?php if ($photoUrl): ?>
                   <div class="seat-photo-wrapper">

@@ -86,6 +86,9 @@ $router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}', fn($p)=
 $router->add('GET',     '/import',                          fn($p) => (new ImportController)->index($p));
 $router->add('POST',    '/import/photos',                   fn($p) => (new ImportController)->photos($p));
 
+// Photos élèves :
+$router->add('GET',     '/photo',                           fn() => (new PhotoController)->serve());
+
 // Racine
 $router->add('GET',     '/',                                fn()  => Response::redirect('/sessions'));
 
