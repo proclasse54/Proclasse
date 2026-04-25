@@ -123,7 +123,7 @@ class ImportController
             $prenomFichier = nettoyerChaine($e['prenom']);
             $dest = $outputDir . $classeFichier . '.' . $nomFichier . '.' . $prenomFichier . '.jpg';
 
-            if (file_put_contents($dest, $jpg) !== false) $extracted++;
+            if (file_put_contents($dest, $e['imageData']) !== false) $extracted++;
         }
 
         Response::json([
