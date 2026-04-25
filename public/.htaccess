@@ -1,6 +1,9 @@
 Options -Indexes
 RewriteEngine On
 
+# Bloquer /install
+RewriteRule ^install$ - [F,L]
+
 # Servir les fichiers et dossiers existants directement
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
