@@ -44,7 +44,7 @@ if ($appCfg['debug'] ?? false) {
 Auth::start();
 
 // ── Routes PUBLIQUES (sans Auth::check) ──────────────────
-// /login, /logout et /install sont enregistrées à l'étape 4 (AuthController).
+// /login, /logout et /install sont gérées par AuthController.
 // /photo est publique : les photos élèves peuvent être affichées sans login
 // (la sécurité repose sur l'URL non-devinable Classe.Nom.Prenom.jpg)
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -67,6 +67,13 @@ if (!$isPublic) {
 
 // ── Router ─────────────────────────────────────────────
 $router = new Router();
+
+// Auth
+$router->add('GET',  '/login',   fn() => (new AuthController)->loginForm());
+$router->add('POST', '/login',   fn() => (new AuthController)->loginSubmit());
+$router->add('GET',  '/logout',  fn() => (new AuthController)->logout());
+$router->add('GET',  '/install', fn() => (new AuthController)->install());
+$router->add('POST', '/install', fn() => (new AuthController)->install());
 
 // Salles
 $router->add('GET',    '/rooms',                            fn()  => (new RoomController)->index());
