@@ -21,7 +21,7 @@ class PhotoController
         $nomFichier    = nettoyerChaine(mb_strtoupper($student['last_name'], 'UTF-8'));
         $prenomFichier = removeAccents(nettoyerChaine($student['first_name']));
 
-        $path = getPhotoPath($student['class_name'], $student['last_name'], $student['first_name']);
+        $path = '/var/www/sub-domains/proclasse/public/data/photos_eleves/'."{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
 
         if (!file_exists($path)) { http_response_code(404); exit; }
 

@@ -15,22 +15,6 @@ function removeAccents(string $str): string {
     return iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $str);
 }
 
-/**
- * Retourne l'URL de la photo d'un élève, ou null si absente.
- * Format fichier : CLASSE.NOM.Prenom.jpg
- */
-function getPhotoPath(string $classe, string $nom, string $prenom): ?string
-{
-    $classeFichier = nettoyerChaine($classe);
-    $nomFichier    = nettoyerChaine(mb_strtoupper($nom, 'UTF-8'));
-    $prenomFichier = removeAccents(nettoyerChaine($prenom));
-
-    $path = '/var/www/sub-domains/proclasse/public/data/photos_eleves/'
-          . "{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
-
-    return file_exists($path) ? $path : null;
-}
-
 function nettoyerChaine(string $str): string
 {
     if (class_exists('Normalizer')) {
