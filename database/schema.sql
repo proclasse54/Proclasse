@@ -241,3 +241,21 @@ CREATE TABLE IF NOT EXISTS group_students (
     FOREIGN KEY (group_id) REFERENCES `groups`(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;    
+
+
+-- Paramètres de recadrage photo
+CREATE TABLE IF NOT EXISTS photo_crop_settings (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    scope       ENUM('default','class','student') NOT NULL DEFAULT 'default',
+    scope_id    INT NULL,          -- NULL si default, class_id ou student_id sinon
+    crop_x      FLOAT NOT NULL DEFAULT 0.15,   -- % depuis la gauche
+    crop_y      FLOAT NOT NULL DEFAULT 0.05,   -- % depuis le haut
+    crop_w      FLOAT NOT NULL DEFAULT 0.70,   -- % de la largeur totale
+    crop_h      FLOAT NOT NULL DEFAULT 0.55,   -- % de la hauteur totale
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_scope (scope, scope_id)
+);
+
+-- Valeurs par défaut insérées d'emblée
+INSERT IGNORE INTO photo_crop_settings (scope, scope_id)
+VALUES ('default', NULL);

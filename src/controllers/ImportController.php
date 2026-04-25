@@ -110,15 +110,31 @@ class ImportController
 
         // ── Sauvegarder ──────────────────────────────────────────
         $extracted = 0;
+        
         foreach ($eleves as $e) {
-            $classeFichier = self::nettoyerChaine($e['classe']);
-            $nomFichier    = self::nettoyerChaine(mb_strtoupper($e['nom'], 'UTF-8'));
-            $prenomFichier = self::nettoyerChaine($e['prenom']);
+            $classeFichier = nettoyerChaine($e['classe']);
+            $nomFichier    = nettoyerChaine(mb_strtoupper($e['nom'], 'UTF-8'));
+            $prenomFichier = nettoyerChaine($e['prenom']);
             $dest = $outputDir . $classeFichier . '.' . $nomFichier . '.' . $prenomFichier . '.jpg';
-            /*$jpg  = self::rognerPortrait($e['imageData']);
-            if ($jpg && file_put_contents($dest, $jpg) !== false) $extracted++;*/ //On ne rogne plus la photo ici
-            if (file_put_contents($dest, $e['imageData']) !== false) $extracted++;
 
+            // Chercher l'élève en BDD pour avoir ses IDs
+            $stmt = $db->prepare("
+                SELECT s.id AS student_id, s.class_id
+                FROM students s
+                JOIN classes c ON c.id = s.class_id
+                WHERE c.name = ? AND s.last_name = ? AND s.first_name = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$e['classe'], $e['nom'], $e['prenom']]);
+            $found = $stmt->fetch();
+
+            $crop = getCropSettings(
+                $found['student_id'] ?? 0,
+                $found['class_id']   ?? 0
+            );
+            $jpg = rognerPortrait($e['imageData'], $crop);
+
+            if (file_put_contents($dest, $jpg) !== false) $extracted++;
         }
 
         Response::json([

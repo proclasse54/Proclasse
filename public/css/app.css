@@ -630,11 +630,11 @@ emoji-picker {
 
 .seat-photo {
     width: 100%;
-    aspect-ratio: 1;
+    height: 100%;
+    width: 100%;
     object-fit: cover;
     border-radius: var(--radius-sm, 4px);
     display: block;
-    object-position: center 20%; /* remonte vers le haut pour centrer le visage */
 }
 
 .seat-photo-placeholder {
@@ -651,6 +651,14 @@ emoji-picker {
     text-transform: uppercase;
 }
 
+/* Conteneur de la photo dans chaque siège */
+.seat-photo-wrapper {
+  width: 100%;
+  aspect-ratio: 1 / 1;       /* carré */
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
 
 
 /* ══════════════════════════════════════════════════════════════
@@ -1007,3 +1015,5 @@ details[open] .modal-details-icon {
   .import-tab  { padding: var(--space-3) var(--space-2); }
   .import-tab-icon { font-size: 1.2rem; }
 }
+
+

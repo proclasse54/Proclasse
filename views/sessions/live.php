@@ -55,9 +55,11 @@ ob_start();
                   );
                 ?>
                 <?php if ($photoUrl): ?>
-                  <img src="<?= htmlspecialchars($photoUrl) ?>"
-                       alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
-                       class="seat-photo" loading="lazy">
+                  <div class="seat-photo-wrapper">
+                    <img src="<?= htmlspecialchars($photoUrl) ?>"
+                        alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
+                        class="seat-photo" loading="lazy">
+                  </div>
                 <?php else: ?>
                   <div class="seat-photo-placeholder">
                     <?= htmlspecialchars(mb_substr($seat['first_name'], 0, 1) . mb_substr($seat['last_name'], 0, 1)) ?>
