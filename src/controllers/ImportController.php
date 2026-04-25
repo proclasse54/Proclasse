@@ -28,10 +28,6 @@ class ImportController
 
         $data = file_get_contents($_FILES['pdf']['tmp_name']);
 
-
-         $db = Database::get(); 
-
-         
         // ── Décompresser les objets FlateDecode ──────────────────
         $objMap = [];
         preg_match_all(
@@ -120,23 +116,6 @@ class ImportController
             $nomFichier    = nettoyerChaine(mb_strtoupper($e['nom'], 'UTF-8'));
             $prenomFichier = nettoyerChaine($e['prenom']);
             $dest = $outputDir . $classeFichier . '.' . $nomFichier . '.' . $prenomFichier . '.jpg';
-
-            // Chercher l'élève en BDD pour avoir ses IDs
-            $stmt = $db->prepare("
-                SELECT s.id AS student_id, s.class_id
-                FROM students s
-                JOIN classes c ON c.id = s.class_id
-                WHERE c.name = ? AND s.last_name = ? AND s.first_name = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$e['classe'], $e['nom'], $e['prenom']]);
-            $found = $stmt->fetch();
-
-            $crop = getCropSettings(
-                $found['student_id'] ?? 0,
-                $found['class_id']   ?? 0
-            );
-            $jpg = rognerPortrait($e['imageData'], $crop);
 
             if (file_put_contents($dest, $jpg) !== false) $extracted++;
         }
