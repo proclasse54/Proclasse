@@ -393,13 +393,13 @@ async function moveSeat(studentId, targetSeatId) {
 
   try {
     const result = await persistMove(studentId, sourceSeatId, targetSeatId, scope);
-    if (!result.ok) throw new Error('save failed');
+    if (!result.ok) throw new Error(result.error || 'Erreur inconnue');
   } catch (e) {
     if (srcPayload.occupied) setSeatOccupied(srcEl, srcPayload); else setSeatEmpty(srcEl);
     if (tgtPayload.occupied) setSeatOccupied(tgtEl, tgtPayload); else setSeatEmpty(tgtEl);
     seatStudentMap[sourceSeatId] = srcPayload.studentId ? parseInt(srcPayload.studentId) : null;
     seatStudentMap[targetSeatId] = tgtPayload.studentId ? parseInt(tgtPayload.studentId) : null;
-    alert('Déplacement non enregistré.');
+    alert('Déplacement non enregistré.\n\nDétail : ' + e.message);
   }
 }
 
