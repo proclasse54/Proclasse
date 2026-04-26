@@ -454,7 +454,10 @@ class SessionController
         $sourceSeatId = (int)($data['source_seat_id'] ?? 0);
         $targetSeatId = (int)($data['target_seat_id'] ?? 0);
         $sessionId    = (int)$p['id'];
-        $scope        = ($data['scope'] ?? 'session') === 'plan' ? 'plan' : 'session';
+
+        // scope : 'session' | 'plan' (futures séances) | 'all' (toutes les séances)
+        $rawScope = $data['scope'] ?? 'session';
+        $scope    = in_array($rawScope, ['session', 'plan', 'all'], true) ? $rawScope : 'session';
 
         if (!$studentId || !$sourceSeatId || !$targetSeatId || !$sessionId) {
             Response::json(['error' => 'Paramètres manquants'], 400);
@@ -506,8 +509,8 @@ class SessionController
                     ON DUPLICATE KEY UPDATE student_id = VALUES(student_id)
                 ")->execute([$sessionId, $targetSeatId, $studentId]);
 
-            } else {
-                // ── Modification du plan de référence ─────────────────────────
+            } elseif ($scope === 'plan') {
+                // ── Modification du plan → affecte les futures séances ────────
 
                 // ÉTAPE 1 : Lire les positions actuelles dans le plan
                 $stmtTgt = $db->prepare("
@@ -520,12 +523,6 @@ class SessionController
                 $targetAssignId  = $targetRow ? (int)$targetRow['id']         : null;
 
                 // ÉTAPE 2 : Photographier les séances ANTÉRIEURES sans override
-                //   sur les sièges concernés, et créer des overrides pour
-                //   figer leur position historique avant de toucher le plan.
-                //
-                //   On sélectionne les couples (session_id, seat_id) antérieurs
-                //   à la séance courante qui n'ont pas encore d'override,
-                //   et on leur crée un override avec la valeur actuelle du plan.
                 $stmtPastSessions = $db->prepare("
                     SELECT se.id AS session_id,
                            s.id  AS seat_id,
@@ -552,21 +549,19 @@ class SessionController
                           )
                 ");
                 $stmtPastSessions->execute([
-                    $planId,        // room_id du plan
-                    $planId,        // plan_id pour seating_assignments
-                    $planId,        // plan_id des sessions
-                    $sessionId,     // exclure la séance courante
-                    $sourceSeatId,  // sièges concernés
+                    $planId,
+                    $planId,
+                    $planId,
+                    $sessionId,
+                    $sourceSeatId,
                     $targetSeatId,
-                    $sessionDate,   // strictement antérieur
+                    $sessionDate,
                     $sessionDate,
                     $sessionTime,
                     $sessionTime,
                 ]);
                 $pastRows = $stmtPastSessions->fetchAll();
 
-                // Insérer les overrides de protection (INSERT IGNORE : ne
-                // pas écraser un override déjà existant posé manuellement).
                 $stmtFreeze = $db->prepare("
                     INSERT IGNORE INTO session_seat_overrides
                         (session_id, seat_id, student_id)
@@ -576,13 +571,11 @@ class SessionController
                     $stmtFreeze->execute([
                         (int)$row['session_id'],
                         (int)$row['seat_id'],
-                        $row['frozen_student_id'] !== null
-                            ? (int)$row['frozen_student_id']
-                            : null,
+                        $row['frozen_student_id'] !== null ? (int)$row['frozen_student_id'] : null,
                     ]);
                 }
 
-                // ÉTAPE 3 : Effectuer le swap dans seating_assignments
+                // ÉTAPE 3 : Swap dans seating_assignments
                 if ($targetStudentId) {
                     $db->prepare("DELETE FROM seating_assignments WHERE id = ?")
                        ->execute([$targetAssignId]);
@@ -601,8 +594,7 @@ class SessionController
                     ")->execute([$planId, $sourceSeatId, $targetStudentId]);
                 }
 
-                // ÉTAPE 4 : Purger les overrides des séances STRICTEMENT
-                //   POSTÉRIEURES (pour qu'elles héritent du nouveau plan).
+                // ÉTAPE 4 : Purger les overrides des séances STRICTEMENT POSTÉRIEURES
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
@@ -628,6 +620,50 @@ class SessionController
                     $sessionTime,
                     $sessionTime,
                 ]);
+
+            } else {
+                // ── scope === 'all' : toutes les séances ──────────────────────
+                // Swap dans le plan de référence + suppression de TOUS les
+                // overrides sur ces deux sièges pour ce plan (passées & futures)
+                // → toutes les séances héritent du nouveau plan.
+
+                // Lire la position cible actuelle dans le plan
+                $stmtTgt = $db->prepare("
+                    SELECT id, student_id FROM seating_assignments
+                    WHERE seat_id = ? AND plan_id = ?
+                ");
+                $stmtTgt->execute([$targetSeatId, $planId]);
+                $targetRow       = $stmtTgt->fetch();
+                $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
+                $targetAssignId  = $targetRow ? (int)$targetRow['id']         : null;
+
+                // Swap dans seating_assignments
+                if ($targetStudentId) {
+                    $db->prepare("DELETE FROM seating_assignments WHERE id = ?")
+                       ->execute([$targetAssignId]);
+                }
+
+                $db->prepare("
+                    UPDATE seating_assignments
+                    SET seat_id = ?
+                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
+                ")->execute([$targetSeatId, $sourceSeatId, $planId, $studentId]);
+
+                if ($targetStudentId) {
+                    $db->prepare("
+                        INSERT INTO seating_assignments (plan_id, seat_id, student_id)
+                        VALUES (?, ?, ?)
+                    ")->execute([$planId, $sourceSeatId, $targetStudentId]);
+                }
+
+                // Supprimer TOUS les overrides sur ces deux sièges pour ce plan
+                // (passées et futures) afin qu'elles héritent toutes du plan mis à jour.
+                $db->prepare("
+                    DELETE sso FROM session_seat_overrides sso
+                    JOIN sessions se ON se.id = sso.session_id
+                    WHERE sso.seat_id IN (?, ?)
+                      AND se.plan_id = ?
+                ")->execute([$sourceSeatId, $targetSeatId, $planId]);
             }
 
             $db->commit();
