@@ -575,10 +575,10 @@ class SessionController
                     $targetSeatId,
                     $planId,
                     $sessionId,
-                    $sessionDate,           -- se.date > $sessionDate
-                    $sessionDate,           -- se.date = $sessionDate (pour la partie heure)
-                    $sessionTime,           -- si null → purge toutes même date
-                    $sessionTime,           -- se.time_start > $sessionTime
+                    $sessionDate,           //-- se.date > $sessionDate
+                    $sessionDate,           //-- se.date = $sessionDate (pour la partie heure)
+                    $sessionTime,           //-- si null → purge toutes même date
+                    $sessionTime,           //-- se.time_start > $sessionTime
                 ]);
             }
 
