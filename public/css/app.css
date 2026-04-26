@@ -1013,17 +1013,19 @@ details[open] .modal-details-icon {
    ══════════════════════════════════════════════════════════════ */
 
 .scope-modal-overlay {
+  display: none;  /* masquée par défaut — s'ouvre avec .is-open */
   position: fixed;
   inset: 0;
   z-index: 20000;
   background: oklch(0.1 0 0 / 0.55);
-  display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
   backdrop-filter: blur(2px);
 }
-.scope-modal-overlay[hidden] { display: none; }
+.scope-modal-overlay.is-open {
+  display: flex;
+}
 
 .scope-modal {
   background: var(--surface-2);
