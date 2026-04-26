@@ -312,7 +312,7 @@ class IcsImportController
         return $events;
     }
 
-    private function parseSummary(string $summary): array
+    /*private function parseSummary(string $summary): array
     {
         // Stratégie 1 : chercher le dernier <...> ou [...] dans la chaîne entière
         // Supporte les noms de groupes contenant " - "
@@ -339,6 +339,32 @@ class IcsImportController
         }
 
         return [null, null];
+    }*/
+        
+    private function parseSummary(string $summary): array
+    {
+        $parts = array_map('trim', explode(' - ', $summary));
+        if (count($parts) < 2) {
+            return [null, null];
+        }
+
+        $subject = $parts[0];
+
+        // Priorité 1 : chercher un [...] dans la chaîne entière
+        // → cas "MATIERE - NOM - [3PM_GR1] - <3 PM> 3PM_GR1"
+        if (preg_match('/\[([^\]]+)\]/', $summary, $m)) {
+            return [$subject ?: null, trim($m[1]) ?: null];
+        }
+
+        // Priorité 2 : chercher un <...>
+        if (preg_match('/<([^>]+)>/', $summary, $m)) {
+            return [$subject ?: null, trim($m[1]) ?: null];
+        }
+
+        // Priorité 3 : pas de crochets → le dernier segment est la classe
+        // (gère "MATIERE - NOM PROF - 3B" et "MATIERE - NOM - 3A, 3B, 3C")
+        $last = trim(end($parts), '[]<>()');
+        return [$subject ?: null, $last ?: null];
     }
 
     private function icsDateToLocal(string $icsDate, ?string $tzid = null): ?\DateTime
