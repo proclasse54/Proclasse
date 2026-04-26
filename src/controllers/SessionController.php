@@ -189,6 +189,91 @@ class SessionController
         }
     }
 
+    /**
+     * Retourne le résumé des observations d'une séance (avant suppression).
+     * GET /api/sessions/:id/observations-summary
+     */
+    public function apiObservationsSummary(array $p): void
+    {
+        $stmt = Database::get()->prepare("
+            SELECT st.first_name, st.last_name, o.tag, t.color, t.icon
+            FROM observations o
+            JOIN students st ON st.id = o.student_id
+            LEFT JOIN tags t ON t.label = o.tag
+            WHERE o.session_id = ?
+            ORDER BY st.last_name, st.first_name, o.tag
+        ");
+        $stmt->execute([$p['id']]);
+        $rows = $stmt->fetchAll();
+
+        Response::json([
+            'count' => count($rows),
+            'rows'  => $rows,
+        ]);
+    }
+
+    /**
+     * Export CSV des observations d'une séance.
+     * GET /api/sessions/:id/observations-export
+     */
+    public function apiObservationsExport(array $p): void
+    {
+        $db = Database::get();
+
+        // Infos séance pour le nom du fichier
+        $stmtSes = $db->prepare("
+            SELECT se.date, se.time_start, COALESCE(g.name, c.name) AS class_name
+            FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
+            WHERE se.id = ?
+        ");
+        $stmtSes->execute([$p['id']]);
+        $ses = $stmtSes->fetch();
+
+        if (!$ses) {
+            http_response_code(404);
+            echo 'Séance introuvable';
+            return;
+        }
+
+        $stmtObs = $db->prepare("
+            SELECT st.last_name, st.first_name, o.tag, o.note, o.created_at
+            FROM observations o
+            JOIN students st ON st.id = o.student_id
+            WHERE o.session_id = ?
+            ORDER BY st.last_name, st.first_name, o.tag
+        ");
+        $stmtObs->execute([$p['id']]);
+        $rows = $stmtObs->fetchAll();
+
+        $filename = 'observations_'
+            . str_replace([' ', '/'], '_', $ses['class_name'])
+            . '_' . $ses['date']
+            . ($ses['time_start'] ? '_' . substr($ses['time_start'], 0, 5) : '')
+            . '.csv';
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+        $out = fopen('php://output', 'w');
+        // BOM UTF-8 pour Excel
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, ['Nom', 'Prénom', 'Tag', 'Note', 'Horodatage'], ';');
+        foreach ($rows as $row) {
+            fputcsv($out, [
+                $row['last_name'],
+                $row['first_name'],
+                $row['tag'],
+                $row['note'] ?? '',
+                $row['created_at'],
+            ], ';');
+        }
+        fclose($out);
+        exit;
+    }
+
     public function apiAddObservation(array $p): void
     {
         $data = json_decode(file_get_contents('php://input'), true);
@@ -397,5 +482,4 @@ class SessionController
 
         Response::json(['ok' => true]);
     }
-
 }
