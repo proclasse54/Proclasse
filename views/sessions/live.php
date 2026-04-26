@@ -114,7 +114,29 @@ ob_start();
   </div>
 </div>
 
+<!-- ================================================
+     MODALE SCOPE : session ou plan
+     ================================================ -->
+<div id="scopeModal" class="scope-modal-overlay" hidden
+     role="dialog" aria-modal="true" aria-labelledby="scopeModalTitle">
+  <div class="scope-modal">
+    <h3 id="scopeModalTitle">Déplacer <span id="scopeStudentName"></span></h3>
+    <p class="scope-modal-sub">Ce déplacement doit-il affecter :</p>
 
+    <div class="scope-modal-actions">
+      <button class="btn btn-primary" id="scopeBtnSession">
+        📅 Cette séance uniquement
+        <small>Les autres séances ne bougent pas</small>
+      </button>
+      <button class="btn btn-secondary" id="scopeBtnPlan">
+        🗺️ Le plan de référence
+        <small>Séances futures réinitialisées sur ce siège</small>
+      </button>
+    </div>
+
+    <button class="scope-modal-cancel" id="scopeBtnCancel" aria-label="Annuler">✕ Annuler</button>
+  </div>
+</div>
 
 <script>
 const SESSION_ID = <?= (int)$session['id'] ?>;
@@ -236,14 +258,53 @@ function refreshTags(studentId) {
     });
 }
 
-async function persistMove(studentId, sourceSeatId, targetSeatId) {
+// --------------------------------------------------
+// MODALE SCOPE
+// --------------------------------------------------
+const scopeModal   = document.getElementById('scopeModal');
+const scopeNameEl  = document.getElementById('scopeStudentName');
+
+let _scopeResolve = null;
+
+function askScope(studentName) {
+  return new Promise(resolve => {
+    _scopeResolve = resolve;
+    scopeNameEl.textContent = studentName;
+    scopeModal.hidden = false;
+  });
+}
+
+document.getElementById('scopeBtnSession').addEventListener('click', () => {
+  scopeModal.hidden = true;
+  if (_scopeResolve) { _scopeResolve('session'); _scopeResolve = null; }
+});
+document.getElementById('scopeBtnPlan').addEventListener('click', () => {
+  scopeModal.hidden = true;
+  if (_scopeResolve) { _scopeResolve('plan'); _scopeResolve = null; }
+});
+document.getElementById('scopeBtnCancel').addEventListener('click', () => {
+  scopeModal.hidden = true;
+  if (_scopeResolve) { _scopeResolve(null); _scopeResolve = null; }
+});
+scopeModal.addEventListener('click', e => {
+  if (e.target === scopeModal) {
+    scopeModal.hidden = true;
+    if (_scopeResolve) { _scopeResolve(null); _scopeResolve = null; }
+  }
+});
+
+// --------------------------------------------------
+// API
+// --------------------------------------------------
+async function persistMove(studentId, sourceSeatId, targetSeatId, scope) {
   const r = await fetch(`/api/sessions/${SESSION_ID}/move-seat`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
-      student_id: studentId,
+      student_id:     studentId,
       source_seat_id: sourceSeatId,
-      target_seat_id: targetSeatId
+      target_seat_id: targetSeatId,
+      scope:          scope          // 'session' | 'plan'
     })
   });
   return r.json();
@@ -260,39 +321,39 @@ async function moveSeat(studentId, targetSeatId) {
   const tgtEl = getSeatEl(targetSeatId);
   if (!srcEl || !tgtEl) return;
 
+  // Demander le scope AVANT toute modification UI
+  const srcName = srcEl.dataset.studentName || 'l\''élève';
+  const scope = await askScope(srcName);
+  if (!scope) return;  // annulé
+
   const srcPayload = seatMarkupFromData(srcEl);
   const tgtPayload = seatMarkupFromData(tgtEl);
-
   const targetStudentId = seatStudentMap[targetSeatId] ?? null;
 
   // Mise à jour optimiste UI
   setSeatOccupied(tgtEl, srcPayload);
-
-  if (targetStudentId) {
-    setSeatOccupied(srcEl, tgtPayload);
-  } else {
-    setSeatEmpty(srcEl);
-  }
+  if (targetStudentId) setSeatOccupied(srcEl, tgtPayload); else setSeatEmpty(srcEl);
 
   seatStudentMap[targetSeatId] = studentId;
   seatStudentMap[sourceSeatId] = targetStudentId;
-
   clearSelection();
 
   try {
-    const result = await persistMove(studentId, sourceSeatId, targetSeatId);
+    const result = await persistMove(studentId, sourceSeatId, targetSeatId, scope);
     if (!result.ok) throw new Error('save failed');
   } catch (e) {
-    // rollback
+    // Rollback
     if (srcPayload.occupied) setSeatOccupied(srcEl, srcPayload); else setSeatEmpty(srcEl);
     if (tgtPayload.occupied) setSeatOccupied(tgtEl, tgtPayload); else setSeatEmpty(tgtEl);
-
     seatStudentMap[sourceSeatId] = srcPayload.studentId ? parseInt(srcPayload.studentId) : null;
     seatStudentMap[targetSeatId] = tgtPayload.studentId ? parseInt(tgtPayload.studentId) : null;
-
     alert('Déplacement non enregistré.');
   }
 }
+
+// --------------------------------------------------
+// Événements UI
+// --------------------------------------------------
 
 // Clic siège -> ouvrir tags
 liveRoom.addEventListener('click', e => {
@@ -318,12 +379,7 @@ liveRoom.addEventListener('click', e => {
   const chip = e.target.closest('.tag-chip');
   if (!chip) return;
   e.stopPropagation();
-
-  removeObs(
-    parseInt(chip.dataset.obsId),
-    parseInt(chip.dataset.studentId),
-    chip
-  );
+  removeObs(parseInt(chip.dataset.obsId), parseInt(chip.dataset.studentId), chip);
 });
 
 // Clic bouton tag
@@ -338,16 +394,10 @@ let draggedStudentId = null;
 
 liveRoom.addEventListener('dragstart', e => {
   const seat = e.target.closest('.live-seat.occupied');
-  if (!seat) {
-    e.preventDefault();
-    return;
-  }
+  if (!seat) { e.preventDefault(); return; }
 
   const studentId = parseInt(seat.dataset.studentId);
-  if (!studentId) {
-    e.preventDefault();
-    return;
-  }
+  if (!studentId) { e.preventDefault(); return; }
 
   draggedStudentId = studentId;
   seat.classList.add('dragging');
@@ -374,9 +424,7 @@ liveRoom.addEventListener('dragover', e => {
 
 liveRoom.addEventListener('dragleave', e => {
   const seat = e.target.closest('.live-seat');
-  if (seat && !seat.contains(e.relatedTarget)) {
-    seat.classList.remove('drag-over');
-  }
+  if (seat && !seat.contains(e.relatedTarget)) seat.classList.remove('drag-over');
 });
 
 liveRoom.addEventListener('drop', e => {
@@ -387,7 +435,7 @@ liveRoom.addEventListener('drop', e => {
   seat.classList.remove('drag-over');
   liveRoom.classList.remove('drag-active');
 
-  const studentId = parseInt(e.dataTransfer.getData('text/plain'));
+  const studentId  = parseInt(e.dataTransfer.getData('text/plain'));
   const targetSeatId = parseInt(seat.dataset.seatId);
 
   if (!isNaN(studentId) && !isNaN(targetSeatId)) {
@@ -460,14 +508,12 @@ liveRoom.addEventListener('touchmove', e => {
 
   e.preventDefault();
   touchClone.style.left = (t.clientX - touchOffX) + 'px';
-  touchClone.style.top = (t.clientY - touchOffY) + 'px';
+  touchClone.style.top  = (t.clientY - touchOffY) + 'px';
 
   liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
-
   touchClone.style.display = 'none';
   const under = document.elementFromPoint(t.clientX, t.clientY)?.closest('.live-seat:not(.inactive)');
   touchClone.style.display = '';
-
   if (under && under !== touchSrcEl) under.classList.add('drag-over');
 }, { passive: false });
 
@@ -500,10 +546,7 @@ liveRoom.addEventListener('touchend', e => {
 });
 
 liveRoom.addEventListener('touchcancel', () => {
-  if (touchClone) {
-    touchClone.remove();
-    touchClone = null;
-  }
+  if (touchClone) { touchClone.remove(); touchClone = null; }
   if (touchSrcEl) touchSrcEl.classList.remove('dragging');
   liveRoom.classList.remove('drag-active');
   liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
