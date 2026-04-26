@@ -221,13 +221,17 @@ body {
 
 /* ── Modal ────────────────────────────────────────────────── */
 .modal-overlay {
+    display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.5);
+    z-index: 1000;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);   /* ← fond semi-opaque */
+    background-color: rgba(0, 0, 0, 0.75);  /* fond noir semi-opaque */
+    backdrop-filter: blur(2px);        /* ← optionnel, effet verre dépoli */
 }
+
 /* hidden gère display:none ; quand on retire hidden, on veut flex */
 .modal-overlay:not([hidden]) {
     display: flex;
@@ -1051,3 +1055,5 @@ details[open] .modal-details-icon {
   .import-tab  { padding: var(--space-3) var(--space-2); }
   .import-tab-icon { font-size: 1.2rem; }
 }
+
+

@@ -45,9 +45,19 @@
           <td><?= $s['time_start'] ? substr($s['time_start'],0,5).' &ndash; '.substr($s['time_end'],0,5) : '&mdash;' ?></td>
           <td><?= htmlspecialchars($s['class_name']) ?></td>
           <td><?= htmlspecialchars($s['subject'] ?? '&mdash;') ?></td>
-          <td><?= htmlspecialchars($s['plan_name']) ?> (<?= htmlspecialchars($s['room_name']) ?>)</td>
+          <td>
+            <?php if ($s['plan_id']): ?>
+              <?= htmlspecialchars($s['plan_name'] ?? '') ?> (<?= htmlspecialchars($s['room_name'] ?? '') ?>)
+            <?php else: ?>
+              <em style="color:var(--color-text-muted);">Multi-classes</em>
+            <?php endif ?>
+          </td>
           <td style="white-space:nowrap;">
+          <?php if ($s['plan_id']): ?>
             <a href="/sessions/<?= $s['id'] ?>/live" class="btn btn-sm btn-primary">Ouvrir</a>
+          <?php else: ?>
+            <span class="btn btn-sm" style="opacity:.4;cursor:default;" title="Séance informative, pas de plan de salle">—</span>
+          <?php endif ?>
             <button onclick="deleteSession(<?= $s['id'] ?>)" class="btn btn-sm btn-danger">Supprimer</button>
           </td>
         </tr>
@@ -94,8 +104,24 @@
     foreach ($weekSessions as $ws) {
         $byDate[$ws['date']][] = $ws;
     }
-    $heureDebut   = 8;
-    $heureFin     = 18;
+    // APRÈS — plage calculée dynamiquement sur les séances de la semaine
+    $heureDebut = 8;   // plancher minimum
+    $heureFin   = 18;  // plafond minimum
+
+    foreach ($weekSessions as $_ws) {
+        if ($_ws['time_start']) {
+            $h = (int)substr($_ws['time_start'], 0, 2);
+            if ($h < $heureDebut) $heureDebut = $h;
+        }
+        if ($_ws['time_end']) {
+            $h = (int)substr($_ws['time_end'], 0, 2);
+            $m = (int)substr($_ws['time_end'], 3, 2);
+            // Si la séance finit après l'heure plafond, étendre (+ arrondir à l'heure sup)
+            $hFin = $m > 0 ? $h + 1 : $h;
+            if ($hFin > $heureFin) $heureFin = $hFin;
+        }
+    }
+
     $pxParHeure   = 64;
     $hauteurTotal = ($heureFin - $heureDebut) * $pxParHeure;
   ?>
@@ -134,14 +160,15 @@
               $top    = (($h  + $m  / 60) - $heureDebut) * $pxParHeure;
               $height = (($h2 + $m2 / 60) - ($h + $m / 60)) * $pxParHeure - 2;
             ?>
-            <div class="week-card"
-                 style="top:<?= round($top) ?>px;height:<?= round($height) ?>px;"
-                 onclick="window.location='/sessions/<?= $ws['id'] ?>/live'">
-              <div class="week-card-time">
-                <?= substr($ws['time_start'],0,5) ?>&ndash;<?= substr($ws['time_end'],0,5) ?>
+            <div class="week-card <?= $ws['plan_id'] ? '' : 'week-card--multi' ?>"
+                style="top:<?= round($top) ?>px;height:<?= round($height) ?>px;<?= $ws['plan_id'] ? '' : 'opacity:.6;cursor:default;' ?>"
+                <?= $ws['plan_id'] ? "onclick=\"window.location='/sessions/{$ws['id']}/live'\"" : '' ?>>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.25rem;">
+                <div class="week-card-class"><?= htmlspecialchars($ws['class_name'] ?? '') ?></div>
+                <?php if ($ws['room_name']): ?>
+                <div class="week-card-room" style="font-size:var(--text-xs);white-space:nowrap;"><?= htmlspecialchars($ws['room_name']) ?></div>
+                <?php endif ?>
               </div>
-              <div class="week-card-class"><?= htmlspecialchars($ws['class_name']) ?></div>
-              <div class="week-card-room"><?= htmlspecialchars($ws['room_name']) ?></div>
               <?php if ($ws['subject']): ?>
               <div class="week-card-subject"><?= htmlspecialchars($ws['subject']) ?></div>
               <?php endif ?>

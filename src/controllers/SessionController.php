@@ -16,14 +16,15 @@ class SessionController
         $offset  = ($page - 1) * $perPage;
 
         $stmt = $db->prepare("
-            SELECT se.*, sp.name AS plan_name,
-                COALESCE(g.name, c.name) AS class_name,
+            SELECT se.*,
+                sp.name AS plan_name,
+                COALESCE(g.name, c.name, se.multi_classes) AS class_name,
                 r.name AS room_name
             FROM sessions se
-            JOIN seating_plans sp ON sp.id = se.plan_id
-            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN seating_plans sp ON sp.id = se.plan_id
+            LEFT JOIN classes c ON c.id = sp.class_id
             LEFT JOIN groups g ON g.id = sp.group_id
-            JOIN rooms r ON r.id = sp.room_id
+            LEFT JOIN rooms r ON r.id = sp.room_id
             ORDER BY se.date DESC, se.time_start DESC, se.created_at DESC
             LIMIT ? OFFSET ?
         ");
@@ -48,13 +49,13 @@ class SessionController
         $stmtWeek = $db->prepare("
             SELECT se.*,
                 sp.name AS plan_name,
-                COALESCE(g.name, c.name) AS class_name,
+                COALESCE(g.name, c.name, se.multi_classes) AS class_name,
                 r.name AS room_name
             FROM sessions se
-            JOIN seating_plans sp ON sp.id = se.plan_id
-            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN seating_plans sp ON sp.id = se.plan_id
+            LEFT JOIN classes c ON c.id = sp.class_id
             LEFT JOIN groups g ON g.id = sp.group_id
-            JOIN rooms r ON r.id = sp.room_id
+            LEFT JOIN rooms r ON r.id = sp.room_id
             WHERE se.date BETWEEN ? AND ?
             ORDER BY se.date, se.time_start
         ");
