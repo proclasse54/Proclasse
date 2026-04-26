@@ -480,6 +480,7 @@ class SessionController
             $db->beginTransaction();
 
             if ($scope === 'session') {
+                // ── Override uniquement pour cette séance ──────────────────────
                 $stmtTgt = $db->prepare("
                     SELECT COALESCE(sso.student_id, sa.student_id) AS current_student_id
                     FROM seats s
@@ -506,6 +507,9 @@ class SessionController
                 ")->execute([$sessionId, $targetSeatId, $studentId]);
 
             } else {
+                // ── Modification du plan de référence ─────────────────────────
+
+                // ÉTAPE 1 : Lire les positions actuelles dans le plan
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -515,6 +519,70 @@ class SessionController
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
                 $targetAssignId  = $targetRow ? (int)$targetRow['id']         : null;
 
+                // ÉTAPE 2 : Photographier les séances ANTÉRIEURES sans override
+                //   sur les sièges concernés, et créer des overrides pour
+                //   figer leur position historique avant de toucher le plan.
+                //
+                //   On sélectionne les couples (session_id, seat_id) antérieurs
+                //   à la séance courante qui n'ont pas encore d'override,
+                //   et on leur crée un override avec la valeur actuelle du plan.
+                $stmtPastSessions = $db->prepare("
+                    SELECT se.id AS session_id,
+                           s.id  AS seat_id,
+                           COALESCE(sso.student_id, sa.student_id) AS frozen_student_id
+                    FROM sessions se
+                    JOIN seats s ON s.room_id = (
+                        SELECT room_id FROM seating_plans WHERE id = ?
+                    )
+                    LEFT JOIN session_seat_overrides sso
+                           ON sso.session_id = se.id AND sso.seat_id = s.id
+                    LEFT JOIN seating_assignments sa
+                           ON sa.seat_id = s.id AND sa.plan_id = ?
+                    WHERE se.plan_id = ?
+                      AND se.id != ?
+                      AND s.id IN (?, ?)
+                      AND sso.seat_id IS NULL
+                      AND (
+                            se.date < ?
+                            OR (
+                                 se.date = ?
+                                 AND ? IS NOT NULL
+                                 AND (se.time_start IS NULL OR se.time_start < ?)
+                               )
+                          )
+                ");
+                $stmtPastSessions->execute([
+                    $planId,        // room_id du plan
+                    $planId,        // plan_id pour seating_assignments
+                    $planId,        // plan_id des sessions
+                    $sessionId,     // exclure la séance courante
+                    $sourceSeatId,  // sièges concernés
+                    $targetSeatId,
+                    $sessionDate,   // strictement antérieur
+                    $sessionDate,
+                    $sessionTime,
+                    $sessionTime,
+                ]);
+                $pastRows = $stmtPastSessions->fetchAll();
+
+                // Insérer les overrides de protection (INSERT IGNORE : ne
+                // pas écraser un override déjà existant posé manuellement).
+                $stmtFreeze = $db->prepare("
+                    INSERT IGNORE INTO session_seat_overrides
+                        (session_id, seat_id, student_id)
+                    VALUES (?, ?, ?)
+                ");
+                foreach ($pastRows as $row) {
+                    $stmtFreeze->execute([
+                        (int)$row['session_id'],
+                        (int)$row['seat_id'],
+                        $row['frozen_student_id'] !== null
+                            ? (int)$row['frozen_student_id']
+                            : null,
+                    ]);
+                }
+
+                // ÉTAPE 3 : Effectuer le swap dans seating_assignments
                 if ($targetStudentId) {
                     $db->prepare("DELETE FROM seating_assignments WHERE id = ?")
                        ->execute([$targetAssignId]);
@@ -533,7 +601,8 @@ class SessionController
                     ")->execute([$planId, $sourceSeatId, $targetStudentId]);
                 }
 
-                // Purge des overrides des séances strictement postérieures à la séance courante
+                // ÉTAPE 4 : Purger les overrides des séances STRICTEMENT
+                //   POSTÉRIEURES (pour qu'elles héritent du nouveau plan).
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
@@ -544,7 +613,9 @@ class SessionController
                             se.date > ?
                             OR (
                                  se.date = ?
-                                 AND (? IS NULL OR se.time_start IS NULL OR se.time_start > ?)
+                                 AND ? IS NOT NULL
+                                 AND se.time_start IS NOT NULL
+                                 AND se.time_start > ?
                                )
                           )
                 ")->execute([
@@ -552,10 +623,10 @@ class SessionController
                     $targetSeatId,
                     $planId,
                     $sessionId,
-                    $sessionDate,           //-- se.date > $sessionDate
-                    $sessionDate,           //-- se.date = $sessionDate (pour la partie heure)
-                    $sessionTime,           //-- si null → purge toutes même date
-                    $sessionTime,           //-- se.time_start > $sessionTime
+                    $sessionDate,
+                    $sessionDate,
+                    $sessionTime,
+                    $sessionTime,
                 ]);
             }
 
