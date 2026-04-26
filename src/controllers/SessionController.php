@@ -107,8 +107,6 @@ class SessionController
         }
 
         // ── Séance précédente ────────────────────────────────────────
-        // Périmètre : même CLASSE (tous ses plans confondus)
-        // Tri décroissant, on prend la plus récente avant la courante
         $stmtPrev = $db->prepare("
             SELECT se.id,
                    se.date,
@@ -481,7 +479,8 @@ class SessionController
 
         $db = Database::get();
 
-        $stmt = $db->prepare("SELECT plan_id, `date` FROM sessions WHERE id = ?");
+        // Récupérer date ET heure de la séance courante
+        $stmt = $db->prepare("SELECT plan_id, `date`, time_start FROM sessions WHERE id = ?");
         $stmt->execute([$sessionId]);
         $session = $stmt->fetch();
 
@@ -491,12 +490,14 @@ class SessionController
         }
 
         $planId      = (int)$session['plan_id'];
-        $sessionDate = $session['date'];
+        $sessionDate = $session['date'];       // ex: "2026-04-26"
+        $sessionTime = $session['time_start']; // ex: "08:00:00" ou null
 
         try {
             $db->beginTransaction();
 
             if ($scope === 'session') {
+                // ── Override uniquement pour cette séance ────────────
                 $stmtTgt = $db->prepare("
                     SELECT COALESCE(sso.student_id, sa.student_id) AS current_student_id
                     FROM seats s
@@ -523,6 +524,8 @@ class SessionController
                 ")->execute([$sessionId, $targetSeatId, $studentId]);
 
             } else {
+                // ── Modification du plan de référence ───────────────
+                // 1. Swap dans seating_assignments
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -550,14 +553,33 @@ class SessionController
                     ")->execute([$planId, $sourceSeatId, $targetStudentId]);
                 }
 
+                // 2. Purger les overrides des séances STRICTEMENT POSTÉRIEURES
+                //    à la séance courante.
+                //    Règle : on compare (se.date, se.time_start) > ($sessionDate, $sessionTime).
+                //    Les séances passées (antérieures ou égales) ne sont PAS touchées.
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
                     WHERE sso.seat_id IN (?, ?)
                       AND se.plan_id = ?
-                      AND se.date >= CURDATE()
                       AND se.id != ?
-                ")->execute([$sourceSeatId, $targetSeatId, $planId, $sessionId]);
+                      AND (
+                            se.date > ?
+                            OR (
+                                 se.date = ?
+                                 AND (? IS NULL OR se.time_start IS NULL OR se.time_start > ?)
+                               )
+                          )
+                ")->execute([
+                    $sourceSeatId,
+                    $targetSeatId,
+                    $planId,
+                    $sessionId,
+                    $sessionDate,           -- se.date > $sessionDate
+                    $sessionDate,           -- se.date = $sessionDate (pour la partie heure)
+                    $sessionTime,           -- si null → purge toutes même date
+                    $sessionTime,           -- se.time_start > $sessionTime
+                ]);
             }
 
             $db->commit();
@@ -565,7 +587,7 @@ class SessionController
             Response::json([
                 'ok'                 => true,
                 'scope'              => $scope,
-                'swapped_student_id' => $targetStudentId,
+                'swapped_student_id' => $targetStudentId ?? null,
             ]);
 
         } catch (\Throwable $e) {
