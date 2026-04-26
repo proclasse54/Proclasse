@@ -8,10 +8,10 @@
 -- student_id NULL = siège explicitement vide pour cette séance (élève absent/retiré)
 
 CREATE TABLE IF NOT EXISTS session_seat_overrides (
-    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    session_id INT UNSIGNED NOT NULL,
-    seat_id    INT UNSIGNED NOT NULL,
-    student_id INT UNSIGNED DEFAULT NULL,  -- NULL = siège vide pour cette séance
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    seat_id    INT NOT NULL,
+    student_id INT          DEFAULT NULL,  -- NULL = siège vide pour cette séance
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
