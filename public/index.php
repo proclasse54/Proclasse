@@ -111,22 +111,24 @@ $router->add('POST',   '/api/plans/{plan_id}/assignments',  fn($p)=> (new ClassC
 $router->add('DELETE', '/api/plans/{plan_id}',              fn($p)=> (new ClassController)->apiDeletePlan($p));
 
 // Séances
-$router->add('GET',    '/sessions',                         fn()  => (new SessionController)->index());
-$router->add('GET',    '/sessions/{id}/live',               fn($p)=> (new SessionController)->live($p));
-$router->add('POST',   '/api/sessions',                     fn()  => (new SessionController)->apiCreate());
-$router->add('POST',   '/api/sessions/import-ics',          fn()  => (new IcsImportController)->apiImportIcs());
-$router->add('DELETE', '/api/sessions/{id}',                fn($p)=> (new SessionController)->apiDelete($p));
-$router->add('GET',    '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiGetObservations($p));
-$router->add('POST',   '/api/sessions/{id}/observations',   fn($p)=> (new SessionController)->apiAddObservation($p));
-$router->add('DELETE', '/api/sessions/{id}/observations/{obs_id}',  fn($p)=> (new SessionController)->apiRemoveObservation($p));
-$router->add('POST',   '/api/sessions/{id}/move-seat',      fn($p)=> (new SessionController)->apiMoveSeat($p));
-$router->add('GET',    '/api/tags',                         fn()  => (new SessionController)->apiGetTags());
-$router->add('POST',   '/api/tags',                         fn()  => (new SessionController)->apiSaveTag());
-$router->add('DELETE', '/api/tags/{id}',                    fn($p)=> (new SessionController)->apiDeleteTag($p));
+$router->add('GET',    '/sessions',                                          fn()  => (new SessionController)->index());
+$router->add('GET',    '/sessions/{id}/live',                                fn($p)=> (new SessionController)->live($p));
+$router->add('POST',   '/api/sessions',                                      fn()  => (new SessionController)->apiCreate());
+$router->add('POST',   '/api/sessions/import-ics',                           fn()  => (new IcsImportController)->apiImportIcs());
+$router->add('DELETE', '/api/sessions/{id}',                                 fn($p)=> (new SessionController)->apiDelete($p));
+$router->add('GET',    '/api/sessions/{id}/observations',                    fn($p)=> (new SessionController)->apiGetObservations($p));
+$router->add('POST',   '/api/sessions/{id}/observations',                    fn($p)=> (new SessionController)->apiAddObservation($p));
+$router->add('DELETE', '/api/sessions/{id}/observations/{obs_id}',           fn($p)=> (new SessionController)->apiRemoveObservation($p));
+$router->add('GET',    '/api/sessions/{id}/observations-summary',            fn($p)=> (new SessionController)->apiObservationsSummary($p));
+$router->add('GET',    '/api/sessions/{id}/observations-export',             fn($p)=> (new SessionController)->apiObservationsExport($p));
+$router->add('POST',   '/api/sessions/{id}/move-seat',                       fn($p)=> (new SessionController)->apiMoveSeat($p));
+$router->add('GET',    '/api/tags',                                          fn()  => (new SessionController)->apiGetTags());
+$router->add('POST',   '/api/tags',                                          fn()  => (new SessionController)->apiSaveTag());
+$router->add('DELETE', '/api/tags/{id}',                                     fn($p)=> (new SessionController)->apiDeleteTag($p));
 
 // Infos élève (modale live)
-$router->add('GET',    '/api/students/{id}',                fn($p)=> (new StudentController)->apiGet($p));
-$router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}', fn($p)=> (new SessionController)->apiRemoveStudent($p));
+$router->add('GET',    '/api/students/{id}',                                 fn($p)=> (new StudentController)->apiGet($p));
+$router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}',     fn($p)=> (new SessionController)->apiRemoveStudent($p));
 
 // Imports
 $router->add('GET',     '/import',                          fn($p) => (new ImportController)->index($p));
