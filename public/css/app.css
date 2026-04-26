@@ -233,11 +233,7 @@ body {
     display: flex;
 }
 
-/* hidden gère display:none ; quand on retire hidden, on veut flex */
-.modal-overlay:not([hidden]) {
-    display: flex;
-}
-.modal-overlay[hidden] { display: none; }
+
 .modal {
   background: var(--surface-2); border-radius: var(--radius-xl);
   width: 100%; max-width: 480px; box-shadow: var(--shadow-md);
@@ -441,10 +437,6 @@ body {
   width: 100%; min-height: 200px;
   font-family: monospace; font-size: var(--text-xs);
   resize: vertical;
-}
-
-.modal-overlay[hidden] {
-    display: none !important;
 }
 
 /* ── Import instructions ──────────────────────────────────── */

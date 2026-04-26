@@ -162,7 +162,7 @@
             ?>
             <div class="week-card <?= $ws['plan_id'] ? '' : 'week-card--multi' ?>"
                 style="top:<?= round($top) ?>px;height:<?= round($height) ?>px;<?= $ws['plan_id'] ? '' : 'opacity:.6;cursor:default;' ?>"
-                <?= $ws['plan_id'] ? "onclick=\"window.location='/sessions/{$ws['id']}/live'\"" : '' ?>>
+                <?= $ws['plan_id'] ? "onclick=\"window.location='/sessions/{$ws['id']}/live?from_week=<?= urlencode($weekDate->format('o\\\\-\\\\WW')) ?>'\"" : '' ?>>
               <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.25rem;">
                 <div class="week-card-class"><?= htmlspecialchars($ws['class_name'] ?? '') ?></div>
                 <?php if ($ws['room_name']): ?>
@@ -185,7 +185,7 @@
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
 <div id="newSessionModal" class="modal-overlay">
-  <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
+  <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);">
       <h2>Nouvelle séance</h2>
       <button onclick="document.getElementById('newSessionModal').classList.remove('is-open')">&times;</button>
@@ -207,7 +207,7 @@
       <?php endif ?>
       <label>Mati&egrave;re (optionnel) <input type="text" name="subject" placeholder="ex: Math&eacute;matiques"></label>
       <div style="display:flex;gap:.5rem;margin-top:var(--space-4);justify-content:flex-end;">
-        <button type="button" onclick="document.getElementById('newSessionModal').hidden=true" class="btn">Annuler</button>
+        <button type="button" onclick="document.getElementById('newSessionModal').classList.remove('is-open')" class="btn">Annuler</button>
         <button type="submit" class="btn btn-primary">Démarrer</button>
       </div>
     </form>
@@ -216,7 +216,7 @@
 
 <!-- ═══ MODAL SUPPRESSION SÉANCE ═══ -->
 <div id="deleteModal" class="modal-overlay">
-  <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);
+  <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);
               width:min(540px,92vw);max-height:80vh;overflow-y:auto;">
     <h2 style="margin-bottom:var(--space-4);">&#9888;&#65039; Supprimer cette séance&nbsp;?</h2>
     <div id="deleteModalBody"></div>

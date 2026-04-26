@@ -18,8 +18,15 @@ foreach ($observations as $o) { $obsMap[$o['student_id']][] = $o; }
 
 ob_start();
 ?>
-<div class="live-header">
-  <a href="/sessions" class="btn btn-ghost btn-sm">← Séances</a>
+  <div class="live-header">
+    <?php
+    $fromWeek = preg_match('/^\d{4}-W\d{2}$/', $_GET['from_week'] ?? '')
+                ? $_GET['from_week']
+                : null;
+    $backUrl = $fromWeek ? '/sessions?view=week&week=' . htmlspecialchars($fromWeek) : '/sessions';
+  ?>
+  <a href="<?= $backUrl ?>" class="btn btn-ghost btn-sm">← Séances</a>
+
   <div class="live-title">
     <strong><?= htmlspecialchars($session['class_name']) ?></strong>
     <span>·</span>
