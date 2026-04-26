@@ -84,13 +84,17 @@ class SessionController
     {
         $db = Database::get();
 
+        // ── Séance courante ──────────────────────────────────────────
         $stmtSession = $db->prepare("
             SELECT se.*, sp.name as plan_name, sp.room_id, sp.class_id,
-                   c.name as class_name, r.name as room_name,
+                   COALESCE(g.name, c.name) AS class_name,
+                   c.id  AS raw_class_id,
+                   r.name as room_name,
                    r.`rows` as room_rows, r.`cols` as room_cols
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
             JOIN rooms r ON r.id = sp.room_id
             WHERE se.id = ?
         ");
@@ -102,39 +106,67 @@ class SessionController
             return;
         }
 
-        // ── Séance précédente (même plan, date/heure antérieure) ──────────
+        // ── Séance précédente ────────────────────────────────────────
+        // Périmètre : même CLASSE (tous ses plans confondus)
+        // Tri décroissant, on prend la plus récente avant la courante
         $stmtPrev = $db->prepare("
-            SELECT id FROM sessions
-            WHERE plan_id = ?
-              AND (date < ? OR (date = ? AND time_start < ?))
-            ORDER BY date DESC, time_start DESC
+            SELECT se.id,
+                   se.date,
+                   se.time_start,
+                   COALESCE(g.name, c.name) AS class_name
+            FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
+            WHERE c.id = ?
+              AND (
+                    se.date < ?
+                    OR (se.date = ? AND (se.time_start IS NULL OR se.time_start < ?))
+                  )
+              AND se.id != ?
+            ORDER BY se.date DESC, se.time_start DESC
             LIMIT 1
         ");
         $stmtPrev->execute([
-            $session['plan_id'],
+            $session['raw_class_id'],
             $session['date'],
             $session['date'],
             $session['time_start'] ?? '99:99:99',
+            $session['id'],
         ]);
-        $prevId = $stmtPrev->fetchColumn() ?: null;
+        $prevRow = $stmtPrev->fetch() ?: null;
+        $prevId  = $prevRow ? (int)$prevRow['id'] : null;
 
-        // ── Séance suivante (même plan, date/heure postérieure) ───────────
+        // ── Séance suivante ──────────────────────────────────────────
         $stmtNext = $db->prepare("
-            SELECT id FROM sessions
-            WHERE plan_id = ?
-              AND (date > ? OR (date = ? AND time_start > ?))
-            ORDER BY date ASC, time_start ASC
+            SELECT se.id,
+                   se.date,
+                   se.time_start,
+                   COALESCE(g.name, c.name) AS class_name
+            FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
+            WHERE c.id = ?
+              AND (
+                    se.date > ?
+                    OR (se.date = ? AND se.time_start IS NOT NULL AND se.time_start > ?)
+                  )
+              AND se.id != ?
+            ORDER BY se.date ASC, se.time_start ASC
             LIMIT 1
         ");
         $stmtNext->execute([
-            $session['plan_id'],
+            $session['raw_class_id'],
             $session['date'],
             $session['date'],
             $session['time_start'] ?? '00:00:00',
+            $session['id'],
         ]);
-        $nextId = $stmtNext->fetchColumn() ?: null;
+        $nextRow = $stmtNext->fetch() ?: null;
+        $nextId  = $nextRow ? (int)$nextRow['id'] : null;
 
-        // Sièges avec affectation du plan de référence
+        // ── Sièges avec affectation du plan de référence ─────────────
         $stmtSeats = $db->prepare("
             SELECT s.*, sa.student_id AS plan_student_id,
                    st.last_name, st.first_name
@@ -148,7 +180,7 @@ class SessionController
         $stmtSeats->execute([$session['plan_id'], $session['room_id']]);
         $seatsRaw = $stmtSeats->fetchAll();
 
-        // Overrides de la séance
+        // ── Overrides de la séance ───────────────────────────────────
         $stmtOv = $db->prepare("
             SELECT sso.seat_id, sso.student_id AS override_student_id,
                    st.last_name, st.first_name
@@ -162,13 +194,13 @@ class SessionController
             $overrides[(int)$ov['seat_id']] = $ov;
         }
 
-        // Fusionner : l'override prime sur le plan
+        // ── Fusionner : l'override prime sur le plan ─────────────────
         $seats = [];
         foreach ($seatsRaw as $seat) {
             $seatId = (int)$seat['id'];
             if (isset($overrides[$seatId])) {
                 $ov = $overrides[$seatId];
-                $seat['student_id'] = $ov['override_student_id'];  // peut être NULL
+                $seat['student_id'] = $ov['override_student_id'];
                 $seat['last_name']  = $ov['last_name']  ?? null;
                 $seat['first_name'] = $ov['first_name'] ?? null;
             } else {
@@ -202,13 +234,11 @@ class SessionController
             return;
         }
 
-        // validation du format de date
         if (!\DateTime::createFromFormat('Y-m-d', $data['date'])) {
             Response::json(['error' => 'Format de date invalide (attendu : YYYY-MM-DD)'], 400);
             return;
         }
 
-        // Validation optionnelle des heures
         foreach (['time_start', 'time_end'] as $field) {
             if (!empty($data[$field]) && !\DateTime::createFromFormat('H:i', $data[$field]) && !\DateTime::createFromFormat('H:i:s', $data[$field])) {
                 Response::json(['error' => "Format d'heure invalide pour $field (attendu : HH:MM)"], 400);
@@ -254,10 +284,6 @@ class SessionController
         }
     }
 
-    /**
-     * Retourne le résumé des observations d'une séance (avant suppression).
-     * GET /api/sessions/:id/observations-summary
-     */
     public function apiObservationsSummary(array $p): void
     {
         $stmt = Database::get()->prepare("
@@ -277,15 +303,10 @@ class SessionController
         ]);
     }
 
-    /**
-     * Export CSV des observations d'une séance.
-     * GET /api/sessions/:id/observations-export
-     */
     public function apiObservationsExport(array $p): void
     {
         $db = Database::get();
 
-        // Infos séance pour le nom du fichier
         $stmtSes = $db->prepare("
             SELECT se.date, se.time_start, COALESCE(g.name, c.name) AS class_name
             FROM sessions se
@@ -323,7 +344,6 @@ class SessionController
         header('Content-Disposition: attachment; filename="' . $filename . '"');
 
         $out = fopen('php://output', 'w');
-        // BOM UTF-8 pour Excel
         fwrite($out, "\xEF\xBB\xBF");
         fputcsv($out, ['Nom', 'Prénom', 'Tag', 'Note', 'Horodatage'], ';');
         foreach ($rows as $row) {
@@ -356,7 +376,6 @@ class SessionController
         Response::json(['ok' => true, 'obs_id' => (int)$db->lastInsertId()]);
     }
 
-    // vérification que l'observation appartient bien à la séance
     public function apiRemoveObservation(array $p): void
     {
         $stmt = Database::get()->prepare("DELETE FROM observations WHERE id = ? AND session_id = ?");
@@ -445,23 +464,6 @@ class SessionController
         require ROOT . '/views/layouts/app.php';
     }
 
-    /**
-     * POST /api/sessions/:id/move-seat
-     *
-     * Body JSON :
-     *   student_id      : int
-     *   source_seat_id  : int
-     *   target_seat_id  : int
-     *   scope           : 'session' | 'plan'   (défaut : 'session')
-     *
-     * scope=session → écrit uniquement dans session_seat_overrides
-     *                 Les séances passées et futures ne bougent pas.
-     *
-     * scope=plan    → met à jour seating_assignments (plan de référence)
-     *                 + supprime les overrides des séances FUTURES
-     *                   (date >= aujourd'hui, séance courante exclue)
-     *                 Les séances passées (overrides compris) ne bougent pas.
-     */
     public function apiMoveSeat(array $p): void
     {
         $data = json_decode(file_get_contents('php://input'), true);
@@ -479,7 +481,6 @@ class SessionController
 
         $db = Database::get();
 
-        // Récupérer plan_id + date de la séance
         $stmt = $db->prepare("SELECT plan_id, `date` FROM sessions WHERE id = ?");
         $stmt->execute([$sessionId]);
         $session = $stmt->fetch();
@@ -496,12 +497,6 @@ class SessionController
             $db->beginTransaction();
 
             if ($scope === 'session') {
-                // --------------------------------------------------
-                // Scope SESSION : overrides uniquement
-                // --------------------------------------------------
-
-                // Qui est actuellement sur la cible pour cette séance ?
-                // (override s'il existe, sinon affectation du plan)
                 $stmtTgt = $db->prepare("
                     SELECT COALESCE(sso.student_id, sa.student_id) AS current_student_id
                     FROM seats s
@@ -512,17 +507,15 @@ class SessionController
                     WHERE s.id = ?
                 ");
                 $stmtTgt->execute([$sessionId, $planId, $targetSeatId]);
-                $targetStudentId = $stmtTgt->fetchColumn(); // peut être false/null
+                $targetStudentId = $stmtTgt->fetchColumn();
                 $targetStudentId = $targetStudentId ? (int)$targetStudentId : null;
 
-                // UPSERT override source → vide (ou vers l'élève qui était sur la cible)
                 $db->prepare("
                     INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
                     VALUES (?, ?, ?)
                     ON DUPLICATE KEY UPDATE student_id = VALUES(student_id)
                 ")->execute([$sessionId, $sourceSeatId, $targetStudentId]);
 
-                // UPSERT override cible → élève déplacé
                 $db->prepare("
                     INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
                     VALUES (?, ?, ?)
@@ -530,12 +523,6 @@ class SessionController
                 ")->execute([$sessionId, $targetSeatId, $studentId]);
 
             } else {
-                // --------------------------------------------------
-                // Scope PLAN : modifier seating_assignments
-                // + purger les overrides des séances futures
-                // --------------------------------------------------
-
-                // Qui est sur la cible dans le plan ?
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -545,20 +532,17 @@ class SessionController
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
                 $targetAssignId  = $targetRow ? (int)$targetRow['id']         : null;
 
-                // Supprimer l'affectation cible pour libérer la contrainte UNIQUE
                 if ($targetStudentId) {
                     $db->prepare("DELETE FROM seating_assignments WHERE id = ?")
                        ->execute([$targetAssignId]);
                 }
 
-                // Déplacer source → cible
                 $db->prepare("
                     UPDATE seating_assignments
                     SET seat_id = ?
                     WHERE seat_id = ? AND plan_id = ? AND student_id = ?
                 ")->execute([$targetSeatId, $sourceSeatId, $planId, $studentId]);
 
-                // Remettre l'ancien élève de la cible sur la source
                 if ($targetStudentId) {
                     $db->prepare("
                         INSERT INTO seating_assignments (plan_id, seat_id, student_id)
@@ -566,8 +550,6 @@ class SessionController
                     ")->execute([$planId, $sourceSeatId, $targetStudentId]);
                 }
 
-                // Purger les overrides des séances FUTURES (date >= aujourd'hui)
-                // sur ces deux sièges, sauf la séance courante
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
@@ -608,8 +590,6 @@ class SessionController
             return;
         }
 
-        // Retirer via override (siège vide pour cette séance uniquement)
-        // Chercher le siège occupé par cet élève (override ou plan)
         $stmtSeat = $db->prepare("
             SELECT COALESCE(sso.seat_id, sa.seat_id) AS seat_id
             FROM students st
@@ -628,7 +608,6 @@ class SessionController
             return;
         }
 
-        // Override : siège vide pour cette séance
         $db->prepare("
             INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
             VALUES (?, ?, NULL)

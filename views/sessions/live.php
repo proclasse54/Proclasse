@@ -23,6 +23,20 @@ $backUrl  = $fromWeek ? '/sessions?view=week&week=' . htmlspecialchars($fromWeek
 $prevUrl = $prevId ? '/sessions/' . (int)$prevId . '/live' . ($fromWeek ? '?from_week=' . htmlspecialchars($fromWeek) : '') : null;
 $nextUrl = $nextId ? '/sessions/' . (int)$nextId . '/live' . ($fromWeek ? '?from_week=' . htmlspecialchars($fromWeek) : '') : null;
 
+// Tooltips : "3B · 12/04/2026 09h00" ou "3B · 12/04/2026"
+function formatNavTooltip(?array $row, string $direction): string {
+    if (!$row) return '';
+    $label = htmlspecialchars($row['class_name']);
+    $date  = date('d/m/Y', strtotime($row['date']));
+    $time  = ($row['time_start'] && $row['time_start'] !== '00:00:00')
+             ? ' ' . substr($row['time_start'], 0, 5)
+             : '';
+    $arrow = $direction === 'prev' ? '← ' : '→ ';
+    return $arrow . $label . ' · ' . $date . $time;
+}
+$prevTooltip = formatNavTooltip($prevRow ?? null, 'prev');
+$nextTooltip = formatNavTooltip($nextRow ?? null, 'next');
+
 ob_start();
 ?>
   <div class="live-header">
@@ -37,7 +51,7 @@ ob_start();
     <!-- Navigation précédente / suivante autour de la date -->
     <span class="live-date-nav">
       <?php if ($prevUrl): ?>
-        <a href="<?= $prevUrl ?>" class="live-nav-btn" title="Séance précédente" aria-label="Séance précédente">
+        <a href="<?= $prevUrl ?>" class="live-nav-btn" title="<?= $prevTooltip ?>" aria-label="Séance précédente">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </a>
       <?php else: ?>
@@ -49,7 +63,7 @@ ob_start();
       <span class="live-date-label"><?= date('d/m/Y', strtotime($session['date'])) ?></span>
 
       <?php if ($nextUrl): ?>
-        <a href="<?= $nextUrl ?>" class="live-nav-btn" title="Séance suivante" aria-label="Séance suivante">
+        <a href="<?= $nextUrl ?>" class="live-nav-btn" title="<?= $nextTooltip ?>" aria-label="Séance suivante">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </a>
       <?php else: ?>
@@ -59,6 +73,7 @@ ob_start();
       <?php endif; ?>
     </span>
 
+    <span>&middot;</span>
     <?php if ($session['subject']): ?>
     <span class="badge"><?= htmlspecialchars($session['subject']) ?></span>
     <?php endif; ?>
@@ -172,7 +187,6 @@ let currentStudentName = '';
 const liveRoom = document.getElementById('liveRoom');
 const tagsList = document.getElementById('tagsList');
 
-// État local seat_id -> student_id
 const seatStudentMap = {};
 liveRoom.querySelectorAll('.live-seat[data-seat-id]').forEach(el => {
   seatStudentMap[parseInt(el.dataset.seatId)] = el.dataset.studentId ? parseInt(el.dataset.studentId) : null;
@@ -285,7 +299,7 @@ function refreshTags(studentId) {
 }
 
 // --------------------------------------------------
-// MODALE SCOPE — gérée par classe CSS (pas hidden)
+// MODALE SCOPE
 // --------------------------------------------------
 const scopeModal  = document.getElementById('scopeModal');
 const scopeNameEl = document.getElementById('scopeStudentName');
@@ -318,12 +332,10 @@ document.getElementById('scopeBtnSession').addEventListener('click', () => scope
 document.getElementById('scopeBtnPlan').addEventListener('click',    () => scopeResolve('plan'));
 document.getElementById('scopeBtnCancel').addEventListener('click',  () => scopeResolve(null));
 
-// Clic sur l'overlay = annuler
 scopeModal.addEventListener('click', e => {
   if (e.target === scopeModal) scopeResolve(null);
 });
 
-// Escape = annuler (sans fermer les autres modales)
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && scopeModal.classList.contains('is-open')) {
     e.stopImmediatePropagation();
@@ -359,16 +371,14 @@ async function moveSeat(studentId, targetSeatId) {
   const tgtEl = getSeatEl(targetSeatId);
   if (!srcEl || !tgtEl) return;
 
-  // Demander le scope AVANT toute modification UI
   const srcName = srcEl.dataset.studentName || 'l\'élève';
   const scope = await askScope(srcName);
-  if (!scope) return;  // annulé
+  if (!scope) return;
 
   const srcPayload = seatMarkupFromData(srcEl);
   const tgtPayload = seatMarkupFromData(tgtEl);
   const targetStudentId = seatStudentMap[targetSeatId] ?? null;
 
-  // Mise à jour optimiste UI
   setSeatOccupied(tgtEl, srcPayload);
   if (targetStudentId) setSeatOccupied(srcEl, tgtPayload); else setSeatEmpty(srcEl);
 
@@ -380,7 +390,6 @@ async function moveSeat(studentId, targetSeatId) {
     const result = await persistMove(studentId, sourceSeatId, targetSeatId, scope);
     if (!result.ok) throw new Error('save failed');
   } catch (e) {
-    // Rollback
     if (srcPayload.occupied) setSeatOccupied(srcEl, srcPayload); else setSeatEmpty(srcEl);
     if (tgtPayload.occupied) setSeatOccupied(tgtEl, tgtPayload); else setSeatEmpty(tgtEl);
     seatStudentMap[sourceSeatId] = srcPayload.studentId ? parseInt(srcPayload.studentId) : null;
@@ -393,7 +402,6 @@ async function moveSeat(studentId, targetSeatId) {
 // Événements UI
 // --------------------------------------------------
 
-// Clic siège -> ouvrir tags
 liveRoom.addEventListener('click', e => {
   if (e.target.closest('.tag-chip')) return;
 
@@ -412,7 +420,6 @@ liveRoom.addEventListener('click', e => {
   );
 });
 
-// Clic chip -> supprimer observation
 liveRoom.addEventListener('click', e => {
   const chip = e.target.closest('.tag-chip');
   if (!chip) return;
@@ -420,7 +427,6 @@ liveRoom.addEventListener('click', e => {
   removeObs(parseInt(chip.dataset.obsId), parseInt(chip.dataset.studentId), chip);
 });
 
-// Clic bouton tag
 tagsList.addEventListener('click', e => {
   const btn = e.target.closest('.tag-btn');
   if (!btn) return;
@@ -620,7 +626,6 @@ liveRoom.addEventListener('touchcancel', () => {
 </div>
 
 <script>
-// Exposer les variables globales pour app.js
 window.SESSION_ID      = <?= (int)$session['id'] ?>;
 window.seatStudentMap  = seatStudentMap;
 </script>
@@ -657,6 +662,7 @@ $content = ob_get_clean();
   text-decoration: none;
   transition: background var(--transition), color var(--transition);
   flex-shrink: 0;
+  position: relative;
 }
 a.live-nav-btn:hover {
   background: var(--divider);
@@ -666,6 +672,29 @@ a.live-nav-btn:hover {
   opacity: 0.25;
   cursor: default;
   pointer-events: none;
+}
+/* Tooltip CSS natif enrichi */
+a.live-nav-btn::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text, #28251d);
+  color: var(--color-text-inverse, #f9f8f4);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 100;
+}
+a.live-nav-btn:hover::after,
+a.live-nav-btn:focus-visible::after {
+  opacity: 1;
 }
 </style>
 </head>
