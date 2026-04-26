@@ -16,15 +16,16 @@ for ($r = 0; $r < $session['room_rows']; $r++) {
 $obsMap = [];
 foreach ($observations as $o) { $obsMap[$o['student_id']][] = $o; }
 
+// URLs séance précédente / suivante (conserve from_week si présent)
+$fromWeek = preg_match('/^\d{4}-W\d{2}$/', $_GET['from_week'] ?? '') ? $_GET['from_week'] : null;
+$backUrl  = $fromWeek ? '/sessions?view=week&week=' . htmlspecialchars($fromWeek) : '/sessions';
+
+$prevUrl = $prevId ? '/sessions/' . (int)$prevId . '/live' . ($fromWeek ? '?from_week=' . htmlspecialchars($fromWeek) : '') : null;
+$nextUrl = $nextId ? '/sessions/' . (int)$nextId . '/live' . ($fromWeek ? '?from_week=' . htmlspecialchars($fromWeek) : '') : null;
+
 ob_start();
 ?>
   <div class="live-header">
-    <?php
-    $fromWeek = preg_match('/^\d{4}-W\d{2}$/', $_GET['from_week'] ?? '')
-                ? $_GET['from_week']
-                : null;
-    $backUrl = $fromWeek ? '/sessions?view=week&week=' . htmlspecialchars($fromWeek) : '/sessions';
-  ?>
   <a href="<?= $backUrl ?>" class="btn btn-ghost btn-sm">&larr; Séances</a>
 
   <div class="live-title">
@@ -32,7 +33,32 @@ ob_start();
     <span>&middot;</span>
     <span><?= htmlspecialchars($session['room_name']) ?></span>
     <span>&middot;</span>
-    <span><?= date('d/m/Y', strtotime($session['date'])) ?></span>
+
+    <!-- Navigation précédente / suivante autour de la date -->
+    <span class="live-date-nav">
+      <?php if ($prevUrl): ?>
+        <a href="<?= $prevUrl ?>" class="live-nav-btn" title="Séance précédente" aria-label="Séance précédente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </a>
+      <?php else: ?>
+        <span class="live-nav-btn live-nav-btn--disabled" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </span>
+      <?php endif; ?>
+
+      <span class="live-date-label"><?= date('d/m/Y', strtotime($session['date'])) ?></span>
+
+      <?php if ($nextUrl): ?>
+        <a href="<?= $nextUrl ?>" class="live-nav-btn" title="Séance suivante" aria-label="Séance suivante">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+      <?php else: ?>
+        <span class="live-nav-btn live-nav-btn--disabled" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </span>
+      <?php endif; ?>
+    </span>
+
     <?php if ($session['subject']): ?>
     <span class="badge"><?= htmlspecialchars($session['subject']) ?></span>
     <?php endif; ?>
@@ -610,6 +636,38 @@ $content = ob_get_clean();
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?></title>
 <link rel="stylesheet" href="/css/app.css">
+<style>
+/* ── Navigation séance précédente / suivante ── */
+.live-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.live-date-label {
+  font-variant-numeric: tabular-nums;
+}
+.live-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+a.live-nav-btn:hover {
+  background: var(--divider);
+  color: var(--primary);
+}
+.live-nav-btn--disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+</style>
 </head>
 <body class="live-body">
 <?= $content ?>

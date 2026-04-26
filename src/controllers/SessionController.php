@@ -102,6 +102,38 @@ class SessionController
             return;
         }
 
+        // ── Séance précédente (même plan, date/heure antérieure) ──────────
+        $stmtPrev = $db->prepare("
+            SELECT id FROM sessions
+            WHERE plan_id = ?
+              AND (date < ? OR (date = ? AND time_start < ?))
+            ORDER BY date DESC, time_start DESC
+            LIMIT 1
+        ");
+        $stmtPrev->execute([
+            $session['plan_id'],
+            $session['date'],
+            $session['date'],
+            $session['time_start'] ?? '99:99:99',
+        ]);
+        $prevId = $stmtPrev->fetchColumn() ?: null;
+
+        // ── Séance suivante (même plan, date/heure postérieure) ───────────
+        $stmtNext = $db->prepare("
+            SELECT id FROM sessions
+            WHERE plan_id = ?
+              AND (date > ? OR (date = ? AND time_start > ?))
+            ORDER BY date ASC, time_start ASC
+            LIMIT 1
+        ");
+        $stmtNext->execute([
+            $session['plan_id'],
+            $session['date'],
+            $session['date'],
+            $session['time_start'] ?? '00:00:00',
+        ]);
+        $nextId = $stmtNext->fetchColumn() ?: null;
+
         // Sièges avec affectation du plan de référence
         $stmtSeats = $db->prepare("
             SELECT s.*, sa.student_id AS plan_student_id,
