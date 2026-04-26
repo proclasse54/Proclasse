@@ -227,9 +227,10 @@ body {
     z-index: 1000;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.5);   /* ← fond semi-opaque */
-    background-color: rgba(0, 0, 0, 0.75);  /* fond noir semi-opaque */
-    backdrop-filter: blur(2px);        /* ← optionnel, effet verre dépoli */
+    background: rgba(0, 0, 0, 0.75);
+}
+.modal-overlay.is-open {
+    display: flex;
 }
 
 /* hidden gère display:none ; quand on retire hidden, on veut flex */

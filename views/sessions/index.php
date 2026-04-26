@@ -184,11 +184,11 @@
 </div>
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
-<div id="newSessionModal" class="modal-overlay" hidden>
+<div id="newSessionModal" class="modal-overlay">
   <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);">
       <h2>Nouvelle séance</h2>
-      <button onclick="document.getElementById('newSessionModal').hidden=true">&times;</button>
+      <button onclick="document.getElementById('newSessionModal').classList.remove('is-open')">&times;</button>
     </div>
     <form onsubmit="createSession(event)">
       <label>Date <input type="date" name="date" required value="<?= date('Y-m-d') ?>"></label>
@@ -215,7 +215,7 @@
 </div>
 
 <!-- ═══ MODAL SUPPRESSION SÉANCE ═══ -->
-<div id="deleteModal" class="modal-overlay" hidden>
+<div id="deleteModal" class="modal-overlay">
   <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);
               width:min(540px,92vw);max-height:80vh;overflow-y:auto;">
     <h2 style="margin-bottom:var(--space-4);">&#9888;&#65039; Supprimer cette séance&nbsp;?</h2>
@@ -232,7 +232,7 @@
 
 // ── Modal & CRUD ────────────────────────────────────────────
 function openNewSessionModal() {
-    document.getElementById('newSessionModal').hidden = false;
+    document.getElementById('newSessionModal').classList.add('is-open');
 }
 
 function createSession(e) {
@@ -286,7 +286,7 @@ async function deleteSession(id) {
     document.getElementById('deleteModalBody').innerHTML = html;
     const modal = document.getElementById('deleteModal');
     modal.dataset.sessionId = id;
-    modal.hidden = false;
+    modal.classList.add('is-open');
 }
 
 async function doDeleteSession(id) {
@@ -300,12 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
         const id = document.getElementById('deleteModal').dataset.sessionId;
-        document.getElementById('deleteModal').hidden = true;
+        document.getElementById('deleteModal').classList.remove('is-open');
         await doDeleteSession(id);
     });
 
     document.getElementById('btnDeleteCancel').addEventListener('click', () => {
-        document.getElementById('deleteModal').hidden = true;
+        document.getElementById('deleteModal').classList.remove('is-open');
     });
 
     // "Sauvegarder" : télécharge le CSV, laisse la modale ouverte pour décider ensuite
