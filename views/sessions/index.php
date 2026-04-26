@@ -7,15 +7,15 @@
 
 <!-- Import ICS -->
 <details style="margin-bottom:1.5rem;">
-  <summary style="cursor:pointer;font-weight:600;">📅 Importer depuis Pronote (ICS)</summary>
+  <summary style="cursor:pointer;font-weight:600;">&#128197; Importer depuis Pronote (ICS)</summary>
   <p style="margin:.5rem 0;font-size:var(--text-sm);color:var(--color-text-muted);">
-    Exporte ton EDT depuis Pronote → <em>Mon EDT → Exporter → Calendrier (.ics)</em>, puis dépose le fichier ici.
+    Exporte ton EDT depuis Pronote &rarr; <em>Mon EDT &rarr; Exporter &rarr; Calendrier (.ics)</em>, puis d&eacute;pose le fichier ici.
   </p>
   <form id="icsForm" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
     <label>Fichier <code>.ics</code>
       <input type="file" id="icsFile" name="icsfile" accept=".ics" required>
     </label>
-    <button type="submit" class="btn btn-primary">Importer les séances</button>
+    <button type="submit" class="btn btn-primary">Importer les s&eacute;ances</button>
   </form>
   <div id="icsResult" style="margin-top:.5rem;"></div>
 </details>
@@ -23,28 +23,28 @@
 <!-- ═══ TOGGLE VUE ═══ -->
 <div style="display:flex;gap:.5rem;margin-bottom:1rem;">
   <button id="btnList" onclick="setView('list')" class="btn btn-view active">☰ Liste</button>
-  <button id="btnWeek" onclick="setView('week')" class="btn btn-view">📅 Semaine</button>
+  <button id="btnWeek" onclick="setView('week')" class="btn btn-view">&#128197; Semaine</button>
 </div>
 
 <!-- ═══ VUE LISTE ═══ -->
 <div id="viewList">
   <?php if (empty($sessions)): ?>
-    <p class="text-muted">Aucune séance — créez-en une ou importez votre EDT Pronote.</p>
+    <p class="text-muted">Aucune séance &mdash; créez-en une ou importez votre EDT Pronote.</p>
   <?php else: ?>
     <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:.5rem;">
-      <?= $total ?> séance(s) au total — page <?= $page ?>/<?= $totalPages ?>
+      <?= $total ?> séance(s) au total &mdash; page <?= $page ?>/<?= $totalPages ?>
     </p>
     <table class="table">
       <thead><tr>
-        <th>Date</th><th>Heure</th><th>Classe</th><th>Matière</th><th>Plan / Salle</th><th></th>
+        <th>Date</th><th>Heure</th><th>Classe</th><th>Mati&egrave;re</th><th>Plan / Salle</th><th></th>
       </tr></thead>
       <tbody>
         <?php foreach ($sessions as $s): ?>
         <tr>
           <td><?= htmlspecialchars($s['date']) ?></td>
-          <td><?= $s['time_start'] ? substr($s['time_start'],0,5).' – '.substr($s['time_end'],0,5) : '—' ?></td>
+          <td><?= $s['time_start'] ? substr($s['time_start'],0,5).' &ndash; '.substr($s['time_end'],0,5) : '&mdash;' ?></td>
           <td><?= htmlspecialchars($s['class_name']) ?></td>
-          <td><?= htmlspecialchars($s['subject'] ?? '—') ?></td>
+          <td><?= htmlspecialchars($s['subject'] ?? '&mdash;') ?></td>
           <td><?= htmlspecialchars($s['plan_name']) ?> (<?= htmlspecialchars($s['room_name']) ?>)</td>
           <td style="white-space:nowrap;">
             <a href="/sessions/<?= $s['id'] ?>/live" class="btn btn-sm btn-primary">Ouvrir</a>
@@ -57,11 +57,11 @@
     <?php if ($totalPages > 1): ?>
     <div style="display:flex;gap:.5rem;align-items:center;margin-top:.75rem;">
       <?php if ($page > 1): ?>
-        <a href="?page=<?= $page - 1 ?>" class="btn btn-sm">← Précédent</a>
+        <a href="?page=<?= $page - 1 ?>" class="btn btn-sm">&larr; Pr&eacute;c&eacute;dent</a>
       <?php endif ?>
       <span>Page <?= $page ?>/<?= $totalPages ?></span>
       <?php if ($page < $totalPages): ?>
-        <a href="?page=<?= $page + 1 ?>" class="btn btn-sm">Suivant →</a>
+        <a href="?page=<?= $page + 1 ?>" class="btn btn-sm">Suivant &rarr;</a>
       <?php endif ?>
     </div>
     <?php endif ?>
@@ -79,9 +79,9 @@
 
   <!-- Navigation semaine -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
-    <a href="?view=week&week=<?= $prevWeek ?>" class="btn btn-sm">← Semaine préc.</a>
+    <a href="?view=week&week=<?= $prevWeek ?>" class="btn btn-sm">&larr; Semaine pr&eacute;c.</a>
     <strong><?= $weekLabel ?></strong>
-    <a href="?view=week&week=<?= $nextWeek ?>" class="btn btn-sm">Semaine suiv. →</a>
+    <a href="?view=week&week=<?= $nextWeek ?>" class="btn btn-sm">Semaine suiv. &rarr;</a>
   </div>
 
   <?php
@@ -138,7 +138,7 @@
                  style="top:<?= round($top) ?>px;height:<?= round($height) ?>px;"
                  onclick="window.location='/sessions/<?= $ws['id'] ?>/live'">
               <div class="week-card-time">
-                <?= substr($ws['time_start'],0,5) ?>–<?= substr($ws['time_end'],0,5) ?>
+                <?= substr($ws['time_start'],0,5) ?>&ndash;<?= substr($ws['time_end'],0,5) ?>
               </div>
               <div class="week-card-class"><?= htmlspecialchars($ws['class_name']) ?></div>
               <div class="week-card-room"><?= htmlspecialchars($ws['room_name']) ?></div>
@@ -161,7 +161,7 @@
   <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);">
       <h2>Nouvelle séance</h2>
-      <button onclick="document.getElementById('newSessionModal').hidden=true">×</button>
+      <button onclick="document.getElementById('newSessionModal').hidden=true">&times;</button>
     </div>
     <form onsubmit="createSession(event)">
       <label>Date <input type="date" name="date" required value="<?= date('Y-m-d') ?>"></label>
@@ -169,16 +169,16 @@
       <label>Heure de fin   <input type="time" name="time_end"></label>
       <label>Classe / Salle
         <select name="plan_id" required>
-          <option value="">— Choisir —</option>
+          <option value="">&mdash; Choisir &mdash;</option>
           <?php foreach ($plans as $pl): ?>
-          <option value="<?= $pl['id'] ?>"><?= htmlspecialchars($pl['class_name'].' – '.$pl['room_name']) ?></option>
+          <option value="<?= $pl['id'] ?>"><?= htmlspecialchars($pl['class_name'].' &ndash; '.$pl['room_name']) ?></option>
           <?php endforeach ?>
         </select>
       </label>
       <?php if (empty($plans)): ?>
-        <p style="color:var(--color-warning);">⚠️ Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.</p>
+        <p style="color:var(--color-warning);">&#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.</p>
       <?php endif ?>
-      <label>Matière (optionnel) <input type="text" name="subject" placeholder="ex: Mathématiques"></label>
+      <label>Mati&egrave;re (optionnel) <input type="text" name="subject" placeholder="ex: Math&eacute;matiques"></label>
       <div style="display:flex;gap:.5rem;margin-top:var(--space-4);justify-content:flex-end;">
         <button type="button" onclick="document.getElementById('newSessionModal').hidden=true" class="btn">Annuler</button>
         <button type="submit" class="btn btn-primary">Démarrer</button>
@@ -187,13 +187,27 @@
   </div>
 </div>
 
-<script>
+<!-- ═══ MODAL SUPPRESSION SÉANCE ═══ -->
+<div id="deleteModal" class="modal-overlay" hidden>
+  <div style="background:var(--color-surface);padding:var(--space-6);border-radius:var(--radius-lg);
+              width:min(540px,92vw);max-height:80vh;overflow-y:auto;">
+    <h2 style="margin-bottom:var(--space-4);">&#9888;&#65039; Supprimer cette séance&nbsp;?</h2>
+    <div id="deleteModalBody"></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;margin-top:var(--space-4);">
+      <button id="btnDeleteCancel"  class="btn">Annuler</button>
+      <button id="btnDeleteSave"    class="btn btn-warning">&#128190; Sauvegarder les obs. d'abord</button>
+      <button id="btnDeleteConfirm" class="btn btn-danger">&#128465; Supprimer quand même</button>
+    </div>
+  </div>
+</div>
 
+<script>
 
 // ── Modal & CRUD ────────────────────────────────────────────
 function openNewSessionModal() {
     document.getElementById('newSessionModal').hidden = false;
 }
+
 function createSession(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -212,13 +226,69 @@ function createSession(e) {
         else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
     });
 }
-function deleteSession(id) {
-    if (!confirm('Supprimer cette séance et toutes ses observations ?')) return;
-    fetch('/api/sessions/' + id, {method:'DELETE'})
-        .then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+
+async function deleteSession(id) {
+    // 1. Vérifier s'il y a des observations
+    const summary = await fetch('/api/sessions/' + id + '/observations-summary')
+                          .then(r => r.json());
+
+    if (summary.count === 0) {
+        // Pas d'observations → confirmation simple
+        if (!confirm('Supprimer cette séance ? (aucune observation enregistrée)')) return;
+        await doDeleteSession(id);
+        return;
+    }
+
+    // 2. Construire le détail par élève
+    const byStudent = {};
+    summary.rows.forEach(r => {
+        const key = r.last_name + ' ' + r.first_name;
+        if (!byStudent[key]) byStudent[key] = [];
+        byStudent[key].push((r.icon ?? '') + ' ' + r.tag);
+    });
+
+    let html = `<p style="margin-bottom:.75rem">
+        <strong>${summary.count} observation(s)</strong> seront définitivement supprimées&nbsp;:
+    </p><ul style="margin:.5rem 0 1rem 1.25rem;line-height:2">`;
+    for (const [student, tags] of Object.entries(byStudent)) {
+        html += `<li><strong>${student}</strong>&nbsp;: ${tags.join(', ')}</li>`;
+    }
+    html += `</ul>`;
+
+    // 3. Afficher la modale
+    document.getElementById('deleteModalBody').innerHTML = html;
+    const modal = document.getElementById('deleteModal');
+    modal.dataset.sessionId = id;
+    modal.hidden = false;
 }
 
-// ── Import ICS ──────────────────────────────────────────────
+async function doDeleteSession(id) {
+    const d = await fetch('/api/sessions/' + id, {method:'DELETE'}).then(r => r.json());
+    if (d.ok) location.reload();
+    else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+}
+
+// ── Boutons de la modale de suppression ──────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+
+    document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
+        const id = document.getElementById('deleteModal').dataset.sessionId;
+        document.getElementById('deleteModal').hidden = true;
+        await doDeleteSession(id);
+    });
+
+    document.getElementById('btnDeleteCancel').addEventListener('click', () => {
+        document.getElementById('deleteModal').hidden = true;
+    });
+
+    // "Sauvegarder" : télécharge le CSV, laisse la modale ouverte pour décider ensuite
+    document.getElementById('btnDeleteSave').addEventListener('click', () => {
+        const id = document.getElementById('deleteModal').dataset.sessionId;
+        window.open('/api/sessions/' + id + '/observations-export', '_blank');
+    });
+});
+
+// ── Import ICS ────────────────────────────────────────────
 document.getElementById('icsForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const btn = this.querySelector('button[type=submit]');
@@ -230,12 +300,12 @@ document.getElementById('icsForm').addEventListener('submit', async function(e) 
     if (data.ok) {
         let html = `<span style="color:var(--color-success,green)">
             ✅ ${data.inserted} séance(s) créée(s)
-            ${data.plans_created ? ` · ${data.plans_created} plan(s) généré(s)` : ''}
-            · ${data.skipped} ignorée(s) (doublons)
+            ${data.plans_created ? ` &middot; ${data.plans_created} plan(s) généré(s)` : ''}
+            &middot; ${data.skipped} ignorée(s) (doublons)
         </span>`;
         if (data.errors?.length) {
-            html += '<br><details><summary>⚠️ ' + data.errors.length + ' avertissement(s)</summary>'
-                  + data.errors.map(e => `<div>• ${e}</div>`).join('') + '</details>';
+            html += '<br><details><summary>&#9888;&#65039; ' + data.errors.length + ' avertissement(s)</summary>'
+                  + data.errors.map(e => `<div>&bull; ${e}</div>`).join('') + '</details>';
         }
         el.innerHTML = html;
         setTimeout(() => location.reload(), 2000);
