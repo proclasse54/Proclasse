@@ -259,3 +259,13 @@ CREATE TABLE IF NOT EXISTS photo_crop_settings (
 -- Valeurs par défaut insérées d'emblée
 INSERT IGNORE INTO photo_crop_settings (scope, scope_id)
 VALUES ('default', NULL);
+
+
+ALTER TABLE sessions
+    MODIFY COLUMN plan_id INT NULL;
+
+-- Ajouter une colonne optionnelle pour mémoriser le libellé multi-classes
+ALTER TABLE sessions
+    ADD COLUMN IF NOT EXISTS multi_classes VARCHAR(255) NULL
+    COMMENT 'Libellé brut des classes pour les séances multi-classes sans plan'
+    AFTER plan_id;

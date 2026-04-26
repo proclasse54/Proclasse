@@ -44,6 +44,7 @@ class IcsImportController
         $inserted = 0;
         $skipped  = 0;
         $created  = 0;
+        $ignored  = 0;
         $errors   = [];
 
         foreach ($events as $ev) {
@@ -95,7 +96,28 @@ class IcsImportController
             }
 
             if (!$class) {
-                $errors[] = "Classe/Groupe inconnue en base : \u00ab $className \u00bb (s\u00e9ance du $date)";
+                // Séance multi-classes (ex: "3A, 3B, 3C…") ou libellé sans classe reconnue
+                // → insérer comme séance informative sans plan_id ni affectations
+                if (str_contains($className, ',')) {
+                    // Déduplication : même subject + date + time_start sans plan
+                    $stmtDup = $db->prepare(
+                        "SELECT id FROM sessions
+                        WHERE plan_id IS NULL AND `date` = ? AND time_start = ? AND subject = ?
+                        LIMIT 1"
+                    );
+                    $stmtDup->execute([$date, $timeStart, $subject]);
+                    if ($stmtDup->fetch()) { $skipped++; continue; }
+
+                    $db->prepare(
+                        "INSERT INTO sessions (plan_id, multi_classes, `date`, time_start, time_end, subject)
+                        VALUES (NULL, ?, ?, ?, ?, ?)"
+                    )->execute([trim($className), $date, $timeStart, $timeEnd, $subject]);
+                    $inserted++;
+                } else {
+                    // Classe simple mais inconnue en base (ex: "M. JACQUE ARNAUD" = réunion sans classe)
+                    // → ignorer silencieusement
+                    $ignored++;
+                }
                 continue;
             }
 
@@ -160,6 +182,7 @@ class IcsImportController
             'inserted'      => $inserted,
             'skipped'       => $skipped,
             'plans_created' => $created,
+            'ignored'       => $ignored, 
             'errors'        => $errors,
         ]);
     }
@@ -340,7 +363,7 @@ class IcsImportController
 
         return [null, null];
     }*/
-        
+
     private function parseSummary(string $summary): array
     {
         $parts = array_map('trim', explode(' - ', $summary));
