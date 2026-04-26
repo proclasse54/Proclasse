@@ -10,7 +10,6 @@ class SessionController
     {
         $db = Database::get();
 
-        // Pagination : 100 séances par page, triées par date décroissante
         $page    = max(1, (int)($_GET['page'] ?? 1));
         $perPage = 100;
         $offset  = ($page - 1) * $perPage;
@@ -28,14 +27,12 @@ class SessionController
             ORDER BY se.date DESC, se.time_start DESC, se.created_at DESC
             LIMIT ? OFFSET ?
         ");
-
         $stmt->execute([(int)$perPage, (int)$offset]);
         $sessions = $stmt->fetchAll();
 
         $total      = (int)$db->query("SELECT COUNT(*) FROM sessions")->fetchColumn();
         $totalPages = (int)ceil($total / $perPage);
 
-        // Semaine affichée (paramètre ?week=2025-W36, défaut = semaine courante)
         $weekParam = $_GET['week'] ?? null;
         if ($weekParam && preg_match('/^\d{4}-W(\d{2})$/', $weekParam, $m)) {
             $weekDate = new \DateTime();
@@ -61,7 +58,7 @@ class SessionController
         ");
         $stmtWeek->execute([$weekStart, $weekEnd]);
         $weekSessions = $stmtWeek->fetchAll();
-        $currentWeek  = $weekDate->format('o\-\WW'); // ex: "2025-W36"
+        $currentWeek  = $weekDate->format('o\-\WW');
 
         $plans = $db->query("
             SELECT sp.*, c.name as class_name, r.name as room_name
@@ -84,7 +81,6 @@ class SessionController
     {
         $db = Database::get();
 
-        // ── Séance courante ──────────────────────────────────────────
         $stmtSession = $db->prepare("
             SELECT se.*, sp.name as plan_name, sp.room_id, sp.class_id,
                    COALESCE(g.name, c.name) AS class_name,
@@ -106,11 +102,8 @@ class SessionController
             return;
         }
 
-        // ── Séance précédente ────────────────────────────────────────
         $stmtPrev = $db->prepare("
-            SELECT se.id,
-                   se.date,
-                   se.time_start,
+            SELECT se.id, se.date, se.time_start,
                    COALESCE(g.name, c.name) AS class_name
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
@@ -135,11 +128,8 @@ class SessionController
         $prevRow = $stmtPrev->fetch() ?: null;
         $prevId  = $prevRow ? (int)$prevRow['id'] : null;
 
-        // ── Séance suivante ──────────────────────────────────────────
         $stmtNext = $db->prepare("
-            SELECT se.id,
-                   se.date,
-                   se.time_start,
+            SELECT se.id, se.date, se.time_start,
                    COALESCE(g.name, c.name) AS class_name
             FROM sessions se
             JOIN seating_plans sp ON sp.id = se.plan_id
@@ -164,7 +154,6 @@ class SessionController
         $nextRow = $stmtNext->fetch() ?: null;
         $nextId  = $nextRow ? (int)$nextRow['id'] : null;
 
-        // ── Sièges avec affectation du plan de référence ─────────────
         $stmtSeats = $db->prepare("
             SELECT s.*, sa.student_id AS plan_student_id,
                    st.last_name, st.first_name
@@ -178,7 +167,6 @@ class SessionController
         $stmtSeats->execute([$session['plan_id'], $session['room_id']]);
         $seatsRaw = $stmtSeats->fetchAll();
 
-        // ── Overrides de la séance ───────────────────────────────────
         $stmtOv = $db->prepare("
             SELECT sso.seat_id, sso.student_id AS override_student_id,
                    st.last_name, st.first_name
@@ -192,7 +180,6 @@ class SessionController
             $overrides[(int)$ov['seat_id']] = $ov;
         }
 
-        // ── Fusionner : l'override prime sur le plan ─────────────────
         $seats = [];
         foreach ($seatsRaw as $seat) {
             $seatId = (int)$seat['id'];
@@ -295,10 +282,7 @@ class SessionController
         $stmt->execute([$p['id']]);
         $rows = $stmt->fetchAll();
 
-        Response::json([
-            'count' => count($rows),
-            'rows'  => $rows,
-        ]);
+        Response::json(['count' => count($rows), 'rows' => $rows]);
     }
 
     public function apiObservationsExport(array $p): void
@@ -479,7 +463,6 @@ class SessionController
 
         $db = Database::get();
 
-        // Récupérer date ET heure de la séance courante
         $stmt = $db->prepare("SELECT plan_id, `date`, time_start FROM sessions WHERE id = ?");
         $stmt->execute([$sessionId]);
         $session = $stmt->fetch();
@@ -490,14 +473,13 @@ class SessionController
         }
 
         $planId      = (int)$session['plan_id'];
-        $sessionDate = $session['date'];       // ex: "2026-04-26"
-        $sessionTime = $session['time_start']; // ex: "08:00:00" ou null
+        $sessionDate = $session['date'];
+        $sessionTime = $session['time_start'];
 
         try {
             $db->beginTransaction();
 
             if ($scope === 'session') {
-                // ── Override uniquement pour cette séance ────────────
                 $stmtTgt = $db->prepare("
                     SELECT COALESCE(sso.student_id, sa.student_id) AS current_student_id
                     FROM seats s
@@ -524,8 +506,6 @@ class SessionController
                 ")->execute([$sessionId, $targetSeatId, $studentId]);
 
             } else {
-                // ── Modification du plan de référence ───────────────
-                // 1. Swap dans seating_assignments
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -553,10 +533,7 @@ class SessionController
                     ")->execute([$planId, $sourceSeatId, $targetStudentId]);
                 }
 
-                // 2. Purger les overrides des séances STRICTEMENT POSTÉRIEURES
-                //    à la séance courante.
-                //    Règle : on compare (se.date, se.time_start) > ($sessionDate, $sessionTime).
-                //    Les séances passées (antérieures ou égales) ne sont PAS touchées.
+                // Purge des overrides des séances strictement postérieures à la séance courante
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
@@ -575,10 +552,10 @@ class SessionController
                     $targetSeatId,
                     $planId,
                     $sessionId,
-                    $sessionDate,           //-- se.date > $sessionDate
-                    $sessionDate,           //-- se.date = $sessionDate (pour la partie heure)
-                    $sessionTime,           //-- si null → purge toutes même date
-                    $sessionTime,           //-- se.time_start > $sessionTime
+                    $sessionDate,           -- se.date > $sessionDate
+                    $sessionDate,           -- se.date = $sessionDate (pour la partie heure)
+                    $sessionTime,           -- si null → purge toutes même date
+                    $sessionTime,           -- se.time_start > $sessionTime
                 ]);
             }
 
