@@ -497,6 +497,48 @@ class SessionController
         $db->exec('SET FOREIGN_KEY_CHECKS = 1');
     }
 
+    /**
+     * Après un swap de plan, recalcule proprement les overrides
+     * de la séance courante pour les sièges impactés.
+     *
+     * Principe : on supprime TOUS les overrides existants sur les
+     * sièges concernés, puis on réécrit uniquement ceux qui divergent
+     * du nouvel état du plan (= évite les doublons et les fantômes).
+     *
+     * @param int[]   $seatIds     Tous les seat_id à recalculer (plan + visuel)
+     * @param array   $newPlanMap  [seat_id => student_id|null]  état du plan après swap
+     * @param array   $wantedMap   [seat_id => student_id|null]  état visuel voulu pour s
+     */
+    private function resyncSessionOverrides(
+        \PDO $db,
+        int  $sessionId,
+        array $seatIds,
+        array $newPlanMap,
+        array $wantedMap
+    ): void {
+        if (empty($seatIds)) return;
+
+        // 1. Supprimer tous les overrides existants sur ces sièges pour cette séance
+        $in = implode(',', array_fill(0, count($seatIds), '?'));
+        $db->prepare("
+            DELETE FROM session_seat_overrides
+            WHERE session_id = ? AND seat_id IN ($in)
+        ")->execute(array_merge([$sessionId], $seatIds));
+
+        // 2. Réécrire uniquement les overrides qui divergent du plan
+        $stmtIns = $db->prepare("
+            INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
+            VALUES (?, ?, ?)
+        ");
+        foreach ($seatIds as $seatId) {
+            $planVal   = $newPlanMap[$seatId]  ?? null;
+            $wantedVal = $wantedMap[$seatId]   ?? null;
+            if ($wantedVal !== $planVal) {
+                $stmtIns->execute([$sessionId, $seatId, $wantedVal]);
+            }
+        }
+    }
+
     public function apiMoveSeat(array $p): void
     {
         set_error_handler(function () {});
@@ -538,11 +580,9 @@ class SessionController
 
             if ($scope === 'session') {
                 // ── Override uniquement pour cette séance ──────────────────────
-                // source_seat_id visuel est correct ici car on travaille sur les overrides
 
                 $stmtOvTgt = $db->prepare("
-                    SELECT student_id, 1 AS has_override
-                    FROM session_seat_overrides
+                    SELECT student_id FROM session_seat_overrides
                     WHERE session_id = ? AND seat_id = ?
                 ");
                 $stmtOvTgt->execute([$sessionId, $targetSeatId]);
@@ -574,11 +614,8 @@ class SessionController
 
             } elseif ($scope === 'plan') {
                 // ── Modification du plan → affecte les futures séances ────────
-                //
-                // IMPORTANT : source_seat_id envoyé par le frontend est la position
-                // VISUELLE (avec overrides). Pour modifier le plan, on doit travailler
-                // sur la position RÉELLE dans seating_assignments.
 
+                // Retrouver la VRAIE position de l'élève dans le plan
                 $stmtRealSrc = $db->prepare("
                     SELECT seat_id FROM seating_assignments
                     WHERE student_id = ? AND plan_id = ?
@@ -594,6 +631,7 @@ class SessionController
                 }
                 $planSourceSeatId = (int)$realSrcRow['seat_id'];
 
+                // Occupant actuel du siège cible dans le plan
                 $stmtTgt = $db->prepare("
                     SELECT student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -602,7 +640,7 @@ class SessionController
                 $targetRow       = $stmtTgt->fetch();
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
 
-                // Photographier les séances antérieures sans override
+                // Photographier les séances antérieures sans override sur ces sièges
                 $stmtPastSessions = $db->prepare("
                     SELECT se.id AS session_id,
                            s.id  AS seat_id,
@@ -636,8 +674,7 @@ class SessionController
                 $pastRows = $stmtPastSessions->fetchAll();
 
                 $stmtFreeze = $db->prepare("
-                    INSERT IGNORE INTO session_seat_overrides
-                        (session_id, seat_id, student_id)
+                    INSERT IGNORE INTO session_seat_overrides (session_id, seat_id, student_id)
                     VALUES (?, ?, ?)
                 ");
                 foreach ($pastRows as $row) {
@@ -648,24 +685,62 @@ class SessionController
                     ]);
                 }
 
-                // Swap atomique dans le plan (utilise la vraie position plan)
+                // Swap atomique dans le plan
                 $this->swapPlanAssignments(
                     $db, $planId, $planSourceSeatId, $studentId, $targetSeatId, $targetStudentId
                 );
 
-                // Mettre à jour les overrides de la séance courante pour refléter
-                // le nouvel état du plan (position visuelle = position plan post-swap)
-                $db->prepare("
-                    INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
-                    VALUES (?, ?, ?)
-                    ON DUPLICATE KEY UPDATE student_id = VALUES(student_id)
-                ")->execute([$sessionId, $planSourceSeatId, $targetStudentId]);
+                // État du plan APRÈS le swap
+                // planSourceSeatId → targetStudentId (ou null)
+                // targetSeatId     → studentId
+                $newPlanMap = [
+                    $planSourceSeatId => $targetStudentId,
+                    $targetSeatId     => $studentId,
+                ];
+                // Si le sourceSeatId VISUEL diffère du siège plan,
+                // le plan ne l'a pas touché : on lit son état actuel
+                if ($sourceSeatId !== $planSourceSeatId) {
+                    $stmtVisualPlan = $db->prepare("
+                        SELECT student_id FROM seating_assignments
+                        WHERE seat_id = ? AND plan_id = ?
+                    ");
+                    $stmtVisualPlan->execute([$sourceSeatId, $planId]);
+                    $visualPlanRow = $stmtVisualPlan->fetch();
+                    $newPlanMap[$sourceSeatId] = $visualPlanRow ? (int)$visualPlanRow['student_id'] : null;
+                }
 
-                $db->prepare("
-                    INSERT INTO session_seat_overrides (session_id, seat_id, student_id)
-                    VALUES (?, ?, ?)
-                    ON DUPLICATE KEY UPDATE student_id = VALUES(student_id)
-                ")->execute([$sessionId, $targetSeatId, $studentId]);
+                // État VOULU visuellement pour la séance s
+                // Le visuel que l'utilisateur vient de valider :
+                //   - siège visuel source (sourceSeatId) → targetStudentId (l'occupant du plan cible)
+                //   - siège cible          (targetSeatId)  → studentId (A)
+                //   - siège plan source   (planSourceSeatId) → si diff du visuel,
+                //     il faut y mettre targetStudentId (car le plan vient d'être bougé)
+                $wantedMap = [
+                    $sourceSeatId     => $targetStudentId, // là où l'utilisateur a pris A
+                    $targetSeatId     => $studentId,       // là où A est déposé
+                ];
+                if ($sourceSeatId !== $planSourceSeatId) {
+                    // Le siège plan de A (planSourceSeatId) doit recevoir
+                    // ce que le plan y a mis après le swap = targetStudentId
+                    // mais comme c'est également ce que le plan dit, pas besoin d'override.
+                    // En revanche le siège visuel source (sourceSeatId) contenait A
+                    // grâce à un override scope session ; maintenant que le plan a bougé,
+                    // planSourceSeatId contient targetStudentId dans le plan.
+                    // sourceSeatId dans le plan contient son occupant habituel (inchangé).
+                    // L'utilisateur a pris A visuellement en sourceSeatId donc
+                    // on veut que sourceSeatId affiche targetStudentId pour la séance s.
+                    // (déjà dans $wantedMap ci-dessus)
+                    // planSourceSeatId : le plan y met targetStudentId, pas d'override nécessaire
+                    // (sera géré par resyncSessionOverrides qui comparera avec newPlanMap)
+                    $wantedMap[$planSourceSeatId] = $targetStudentId;
+                }
+
+                // Tous les sièges concernés
+                $affectedSeats = array_values(array_unique([
+                    $planSourceSeatId,
+                    $targetSeatId,
+                    $sourceSeatId,
+                ]));
 
                 // Purger les overrides des séances strictement postérieures
                 $db->prepare("
@@ -688,10 +763,13 @@ class SessionController
                     $sessionDate, $sessionDate, $sessionTime, $sessionTime,
                 ]);
 
+                // Resync propre des overrides de la séance courante
+                $this->resyncSessionOverrides(
+                    $db, $sessionId, $affectedSeats, $newPlanMap, $wantedMap
+                );
+
             } else {
                 // ── scope === 'all' : toutes les séances ──────────────────────
-                //
-                // Même principe : utiliser la vraie position plan de l'élève.
 
                 $stmtRealSrc = $db->prepare("
                     SELECT seat_id FROM seating_assignments
@@ -716,18 +794,20 @@ class SessionController
                 $targetRow       = $stmtTgt->fetch();
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
 
-                // Swap atomique dans le plan (vraie position)
+                // Swap atomique dans le plan
                 $this->swapPlanAssignments(
                     $db, $planId, $planSourceSeatId, $studentId, $targetSeatId, $targetStudentId
                 );
 
-                // Supprimer tous les overrides sur ces deux sièges
+                // Supprimer TOUS les overrides sur ces sièges (toutes séances)
+                $allSeats = array_values(array_unique([$planSourceSeatId, $targetSeatId, $sourceSeatId]));
+                $in = implode(',', array_fill(0, count($allSeats), '?'));
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
-                    WHERE sso.seat_id IN (?, ?)
+                    WHERE sso.seat_id IN ($in)
                       AND se.plan_id = ?
-                ")->execute([$planSourceSeatId, $targetSeatId, $planId]);
+                ")->execute(array_merge($allSeats, [$planId]));
             }
 
             $db->commit();
