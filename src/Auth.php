@@ -44,11 +44,18 @@ class Auth
 
     /**
      * Redirige vers /login si l'utilisateur n'est pas connecté.
-     * À appeler en tête de chaque route protégée.
+     * Pour les requêtes fetch/XHR (header X-Requested-With ou Accept:json),
+     * renvoie 401 JSON au lieu d'une redirection HTML.
      */
     public static function check(): void
     {
         if (!self::isLoggedIn()) {
+            if (self::isApiRequest()) {
+                http_response_code(401);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => false, 'error' => 'Session expirée', 'expired' => true]);
+                exit;
+            }
             // Mémorise l'URL demandée pour rediriger après login
             $_SESSION['_redirect_after_login'] = $_SERVER['REQUEST_URI'];
             Response::redirect('/login');
@@ -63,6 +70,12 @@ class Auth
     {
         self::check();
         if (!self::isAdmin()) {
+            if (self::isApiRequest()) {
+                http_response_code(403);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => false, 'error' => 'Accès interdit']);
+                exit;
+            }
             http_response_code(403);
             require ROOT . '/views/403.php';
             exit;
@@ -213,6 +226,29 @@ class Auth
     }
 
     // ── Helpers privés ────────────────────────────────────────
+
+    /**
+     * Détecte si la requête provient de fetch() / XMLHttpRequest.
+     * On considère qu'une requête est "API" si :
+     *  - elle porte le header X-Requested-With: XMLHttpRequest (axios, jQuery)
+     *  - OU son Accept contient application/json
+     *  - OU elle cible une URL commençant par /api/
+     */
+    private static function isApiRequest(): bool
+    {
+        if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest') {
+            return true;
+        }
+        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        if (str_contains($accept, 'application/json')) {
+            return true;
+        }
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        if (str_starts_with($uri, '/api/')) {
+            return true;
+        }
+        return false;
+    }
 
     private static function loadPermissions(int $userId): void
     {
