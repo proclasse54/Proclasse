@@ -446,6 +446,64 @@ class SessionController
         require ROOT . '/views/layouts/app.php';
     }
 
+    /**
+     * Effectue un swap atomique de deux lignes dans seating_assignments
+     * en désactivant temporairement les vérifications de clés étrangères
+     * (nécessaire car seat_id a une FK vers seats.id et MySQL ne supporte pas
+     * les contraintes DEFERRABLE comme PostgreSQL).
+     *
+     * Stratégie :
+     *   a. SET FOREIGN_KEY_CHECKS = 0
+     *   b. source  → seat_id temporaire négatif
+     *   c. cible   → seat_id source  (ou suppression si cible vide)
+     *   d. temporaire → seat_id cible
+     *   e. SET FOREIGN_KEY_CHECKS = 1
+     * Le tout dans la même transaction : en cas d'erreur tout est annulé.
+     */
+    private function swapPlanAssignments(
+        \PDO $db,
+        int  $planId,
+        int  $sourceSeatId,
+        int  $studentId,
+        int  $targetSeatId,
+        ?int $targetStudentId
+    ): void {
+        $tmpSeatId = -$sourceSeatId;
+
+        $db->exec('SET FOREIGN_KEY_CHECKS = 0');
+
+        // a. source → temporaire
+        $db->prepare("
+            UPDATE seating_assignments
+            SET seat_id = ?
+            WHERE seat_id = ? AND plan_id = ? AND student_id = ?
+        ")->execute([$tmpSeatId, $sourceSeatId, $planId, $studentId]);
+
+        // b. cible → source
+        if ($targetStudentId !== null) {
+            $db->prepare("
+                UPDATE seating_assignments
+                SET seat_id = ?
+                WHERE seat_id = ? AND plan_id = ? AND student_id = ?
+            ")->execute([$sourceSeatId, $targetSeatId, $planId, $targetStudentId]);
+        } else {
+            // Siège cible était vide : supprimer toute ligne résiduelle sur source
+            $db->prepare("
+                DELETE FROM seating_assignments
+                WHERE seat_id = ? AND plan_id = ?
+            ")->execute([$sourceSeatId, $planId]);
+        }
+
+        // c. temporaire → cible
+        $db->prepare("
+            UPDATE seating_assignments
+            SET seat_id = ?
+            WHERE seat_id = ? AND plan_id = ? AND student_id = ?
+        ")->execute([$targetSeatId, $tmpSeatId, $planId, $studentId]);
+
+        $db->exec('SET FOREIGN_KEY_CHECKS = 1');
+    }
+
     public function apiMoveSeat(array $p): void
     {
         set_error_handler(function () {});
@@ -515,14 +573,7 @@ class SessionController
             } elseif ($scope === 'plan') {
                 // ── Modification du plan → affecte les futures séances ────────
 
-                // ÉTAPE 1 : Lire les positions actuelles dans le plan
-                $stmtSrc = $db->prepare("
-                    SELECT id FROM seating_assignments
-                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                ");
-                $stmtSrc->execute([$sourceSeatId, $planId, $studentId]);
-                $sourceRow = $stmtSrc->fetch();
-
+                // LIRE la position cible dans le plan
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -531,7 +582,7 @@ class SessionController
                 $targetRow       = $stmtTgt->fetch();
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
 
-                // ÉTAPE 2 : Photographier les séances ANTÉRIEURES sans override
+                // PHOTOGRAPHIER les séances antérieures sans override
                 $stmtPastSessions = $db->prepare("
                     SELECT se.id AS session_id,
                            s.id  AS seat_id,
@@ -577,40 +628,12 @@ class SessionController
                     ]);
                 }
 
-                // ÉTAPE 3 : Swap atomique via seat_id temporaire négatif
-                // → évite la violation de contrainte unique (plan_id, seat_id)
-                $tmpSeatId = -$sourceSeatId; // valeur négative, jamais en base normalement
+                // SWAP atomique (FK désactivées pendant le swap)
+                $this->swapPlanAssignments(
+                    $db, $planId, $sourceSeatId, $studentId, $targetSeatId, $targetStudentId
+                );
 
-                // 3a. Déplacer source vers siège temporaire
-                $db->prepare("
-                    UPDATE seating_assignments
-                    SET seat_id = ?
-                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                ")->execute([$tmpSeatId, $sourceSeatId, $planId, $studentId]);
-
-                // 3b. Déplacer cible vers source (la place est maintenant libre)
-                if ($targetStudentId) {
-                    $db->prepare("
-                        UPDATE seating_assignments
-                        SET seat_id = ?
-                        WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                    ")->execute([$sourceSeatId, $targetSeatId, $planId, $targetStudentId]);
-                } else {
-                    // Siège cible vide : supprimer toute assignation résiduelle sur source
-                    $db->prepare("
-                        DELETE FROM seating_assignments
-                        WHERE seat_id = ? AND plan_id = ?
-                    ")->execute([$sourceSeatId, $planId]);
-                }
-
-                // 3c. Déplacer source (temporaire) vers cible
-                $db->prepare("
-                    UPDATE seating_assignments
-                    SET seat_id = ?
-                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                ")->execute([$targetSeatId, $tmpSeatId, $planId, $studentId]);
-
-                // ÉTAPE 4 : Purger les overrides des séances STRICTEMENT POSTÉRIEURES
+                // PURGER les overrides des séances strictement postérieures
                 $db->prepare("
                     DELETE sso FROM session_seat_overrides sso
                     JOIN sessions se ON se.id = sso.session_id
@@ -634,7 +657,7 @@ class SessionController
             } else {
                 // ── scope === 'all' : toutes les séances ──────────────────────
 
-                // Lire la position cible actuelle dans le plan
+                // Lire la position cible dans le plan
                 $stmtTgt = $db->prepare("
                     SELECT id, student_id FROM seating_assignments
                     WHERE seat_id = ? AND plan_id = ?
@@ -643,36 +666,10 @@ class SessionController
                 $targetRow       = $stmtTgt->fetch();
                 $targetStudentId = $targetRow ? (int)$targetRow['student_id'] : null;
 
-                // Swap atomique via seat_id temporaire négatif
-                $tmpSeatId = -$sourceSeatId;
-
-                // a. Source → temporaire
-                $db->prepare("
-                    UPDATE seating_assignments
-                    SET seat_id = ?
-                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                ")->execute([$tmpSeatId, $sourceSeatId, $planId, $studentId]);
-
-                // b. Cible → source (place libérée)
-                if ($targetStudentId) {
-                    $db->prepare("
-                        UPDATE seating_assignments
-                        SET seat_id = ?
-                        WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                    ")->execute([$sourceSeatId, $targetSeatId, $planId, $targetStudentId]);
-                } else {
-                    $db->prepare("
-                        DELETE FROM seating_assignments
-                        WHERE seat_id = ? AND plan_id = ?
-                    ")->execute([$sourceSeatId, $planId]);
-                }
-
-                // c. Temporaire → cible
-                $db->prepare("
-                    UPDATE seating_assignments
-                    SET seat_id = ?
-                    WHERE seat_id = ? AND plan_id = ? AND student_id = ?
-                ")->execute([$targetSeatId, $tmpSeatId, $planId, $studentId]);
+                // SWAP atomique (FK désactivées pendant le swap)
+                $this->swapPlanAssignments(
+                    $db, $planId, $sourceSeatId, $studentId, $targetSeatId, $targetStudentId
+                );
 
                 // Supprimer TOUS les overrides sur ces deux sièges pour ce plan
                 $db->prepare("
@@ -694,6 +691,8 @@ class SessionController
 
         } catch (\Throwable $e) {
             if ($db->inTransaction()) $db->rollBack();
+            // S'assurer que FK_CHECKS est remis à 1 même en cas d'erreur
+            try { $db->exec('SET FOREIGN_KEY_CHECKS = 1'); } catch (\Throwable $ignored) {}
             restore_error_handler();
             Response::json(['error' => $e->getMessage()], 500);
         }
