@@ -12,7 +12,7 @@
  */
 
 $cfg = require __DIR__ . '/../config/database.php';
-$dsn = "mysql:host={$cfg['user']};dbname={$cfg['dbname']};charset={$cfg['charset']}";
+$dsn = "mysql:host={$cfg['host']};dbname={$cfg['dbname']};charset={$cfg['charset']}";
 $user = $cfg['user'];          // à adapter
 $pass = $cfg['password'];              // à adapter
 
