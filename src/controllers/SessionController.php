@@ -535,6 +535,8 @@ class SessionController
 
                 // Propagation : mettre à jour session_seats pour toutes
                 // les séances >= séance courante (date/heure)
+                // On utilise $sourceSeatId (position réelle dans la session) et non
+                // $planSourceSeatId (position dans le plan) pour cibler les bons snapshot rows.
                 $db->prepare("
                     UPDATE session_seats ss
                     JOIN sessions se ON se.id = ss.session_id
@@ -546,7 +548,7 @@ class SessionController
                             OR (se.date = ? AND (se.time_start IS NULL OR se.time_start >= ?))
                           )
                 ")->execute([
-                    $planTargetStudent, $planId, $planSourceSeatId,
+                    $planTargetStudent, $planId, $sourceSeatId,
                     $sessionDate, $sessionDate, $sessionTime ?? '00:00:00',
                 ]);
 
@@ -595,12 +597,14 @@ class SessionController
                 );
 
                 // Mettre à jour TOUTES les séances du plan
+                // On utilise $sourceSeatId (position réelle dans la session) et non
+                // $planSourceSeatId (position dans le plan) pour cibler les bons snapshot rows.
                 $db->prepare("
                     UPDATE session_seats ss
                     JOIN sessions se ON se.id = ss.session_id
                     SET ss.student_id = ?
                     WHERE se.plan_id = ? AND ss.seat_id = ?
-                ")->execute([$planTargetStudent, $planId, $planSourceSeatId]);
+                ")->execute([$planTargetStudent, $planId, $sourceSeatId]);
 
                 $db->prepare("
                     UPDATE session_seats ss
