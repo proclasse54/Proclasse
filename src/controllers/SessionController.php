@@ -505,7 +505,7 @@ class SessionController
             } elseif ($scope === 'plan') {
                 // ── Swap dans le plan + propagation sur séances >= courante ──
 
-                // Position réelle de l'élève dans le plan
+                // Position canonique de l'élève dans le plan (source of truth)
                 $stmtRealSrc = $db->prepare("
                     SELECT seat_id FROM seating_assignments
                     WHERE student_id = ? AND plan_id = ?
@@ -533,10 +533,9 @@ class SessionController
                     $db, $planId, $planSourceSeatId, $studentId, $targetSeatId, $planTargetStudent
                 );
 
-                // Propagation : mettre à jour session_seats pour toutes
-                // les séances >= séance courante (date/heure)
-                // On utilise $sourceSeatId (position réelle dans la session) et non
-                // $planSourceSeatId (position dans le plan) pour cibler les bons snapshot rows.
+                // Propagation : utiliser $planSourceSeatId (siège canonique dans le plan)
+                // et non $sourceSeatId (envoyé par le JS, reflet de la session courante
+                // qui peut diverger du plan après un swap scope=session antérieur).
                 $db->prepare("
                     UPDATE session_seats ss
                     JOIN sessions se ON se.id = ss.session_id
@@ -548,7 +547,7 @@ class SessionController
                             OR (se.date = ? AND (se.time_start IS NULL OR se.time_start >= ?))
                           )
                 ")->execute([
-                    $planTargetStudent, $planId, $sourceSeatId,
+                    $planTargetStudent, $planId, $planSourceSeatId,
                     $sessionDate, $sessionDate, $sessionTime ?? '00:00:00',
                 ]);
 
@@ -570,6 +569,7 @@ class SessionController
             } else {
                 // ── scope === 'all' : plan + toutes les séances ──
 
+                // Position canonique de l'élève dans le plan (source of truth)
                 $stmtRealSrc = $db->prepare("
                     SELECT seat_id FROM seating_assignments
                     WHERE student_id = ? AND plan_id = ?
@@ -596,15 +596,15 @@ class SessionController
                     $db, $planId, $planSourceSeatId, $studentId, $targetSeatId, $planTargetStudent
                 );
 
-                // Mettre à jour TOUTES les séances du plan
-                // On utilise $sourceSeatId (position réelle dans la session) et non
-                // $planSourceSeatId (position dans le plan) pour cibler les bons snapshot rows.
+                // Propagation : utiliser $planSourceSeatId (siège canonique dans le plan)
+                // et non $sourceSeatId (envoyé par le JS, reflet de la session courante
+                // qui peut diverger du plan après un swap scope=session antérieur).
                 $db->prepare("
                     UPDATE session_seats ss
                     JOIN sessions se ON se.id = ss.session_id
                     SET ss.student_id = ?
                     WHERE se.plan_id = ? AND ss.seat_id = ?
-                ")->execute([$planTargetStudent, $planId, $sourceSeatId]);
+                ")->execute([$planTargetStudent, $planId, $planSourceSeatId]);
 
                 $db->prepare("
                     UPDATE session_seats ss
