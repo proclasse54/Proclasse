@@ -134,14 +134,13 @@ class ClassController {
         Response::json(['ok' => true, 'id' => $id]);
     }
 
-
     public function apiDeleteClass(array $p): void {
         $db  = Database::get();
         $id  = (int)$p['id'];
 
         $db->beginTransaction();
         try {
-            // Supprimer les observations liées aux séances des plans de la classe
+            // Observations
             $db->prepare("
                 DELETE o FROM observations o
                 JOIN sessions se ON se.id = o.session_id
@@ -149,15 +148,7 @@ class ClassController {
                 WHERE sp.class_id = ?
             ")->execute([$id]);
 
-            // Supprimer les session_seat_overrides liés aux séances des plans de la classe
-            $db->prepare("
-                DELETE sso FROM session_seat_overrides sso
-                JOIN sessions se ON se.id = sso.session_id
-                JOIN seating_plans sp ON sp.id = se.plan_id
-                WHERE sp.class_id = ?
-            ")->execute([$id]);
-
-            // Supprimer les session_seats liés aux séances des plans de la classe
+            // Placements par séance
             $db->prepare("
                 DELETE ss FROM session_seats ss
                 JOIN sessions se ON se.id = ss.session_id
@@ -165,37 +156,37 @@ class ClassController {
                 WHERE sp.class_id = ?
             ")->execute([$id]);
 
-            // Supprimer les séances liées aux plans de la classe
+            // Séances
             $db->prepare("
                 DELETE se FROM sessions se
                 JOIN seating_plans sp ON sp.id = se.plan_id
                 WHERE sp.class_id = ?
             ")->execute([$id]);
 
-            // Supprimer les assignments liés aux plans de la classe
+            // Affectations du plan
             $db->prepare("
                 DELETE sa FROM seating_assignments sa
                 JOIN seating_plans sp ON sp.id = sa.plan_id
                 WHERE sp.class_id = ?
             ")->execute([$id]);
 
-            // Supprimer les plans
+            // Plans
             $db->prepare("DELETE FROM seating_plans WHERE class_id = ?")->execute([$id]);
 
-            // Supprimer les membres des groupes de la classe
+            // Membres des groupes
             $db->prepare("
                 DELETE gs FROM group_students gs
                 JOIN `groups` g ON g.id = gs.group_id
                 WHERE g.class_id = ?
             ")->execute([$id]);
 
-            // Supprimer les groupes de la classe
+            // Groupes
             $db->prepare("DELETE FROM `groups` WHERE class_id = ?")->execute([$id]);
 
-            // Supprimer les élèves
+            // Élèves
             $db->prepare("DELETE FROM students WHERE class_id = ?")->execute([$id]);
 
-            // Supprimer la classe
+            // Classe
             $db->prepare("DELETE FROM classes WHERE id = ?")->execute([$id]);
 
             $db->commit();
@@ -211,9 +202,8 @@ class ClassController {
         $db = Database::get();
         try {
             $db->exec("SET FOREIGN_KEY_CHECKS = 0");
-            // Données de séances (ordre : dépendants d'abord)
+            // Dépendants d'abord
             $db->exec("TRUNCATE TABLE observations");
-            $db->exec("TRUNCATE TABLE session_seat_overrides");
             $db->exec("TRUNCATE TABLE session_seats");
             $db->exec("TRUNCATE TABLE sessions");
             // Placements et plans
@@ -256,7 +246,7 @@ class ClassController {
 
         $db = Database::get();
         $stmtExisting = $db->prepare(
-            "SELECT id FROM seating_plans 
+            "SELECT id FROM seating_plans
             WHERE class_id=? AND room_id=? AND name=? AND (group_id <=> ?)"
         );
         $stmtExisting->execute([$p['id'], $data['room_id'], $data['name'] ?? 'Plan par défaut', $groupId]);
@@ -324,17 +314,13 @@ class ClassController {
             return;
         }
 
-        // Encoder en UTF-8 (le texte collé depuis Pronote Windows peut être CP1252)
         if (!mb_check_encoding($raw, 'UTF-8')) {
             $raw = mb_convert_encoding($raw, 'UTF-8', 'Windows-1252');
         }
 
-
         $tmp = tempnam(sys_get_temp_dir(), 'pronote_');
         try {
             file_put_contents($tmp, $raw);
-
-            // Créer une fausse entrée $_FILES pour réutiliser l'importeur existant
             $_FILES['csv'] = [
                 'tmp_name' => $tmp,
                 'error'    => UPLOAD_ERR_OK,
@@ -342,13 +328,10 @@ class ClassController {
                 'name'     => 'paste.csv',
                 'type'     => 'text/plain',
             ];
-
             require_once __DIR__ . '/PronoteImportController.php';
             (new PronoteImportController)->import($p);
         } finally {
-            if (file_exists($tmp)) {
-                unlink($tmp);
-            }
+            if (file_exists($tmp)) unlink($tmp);
         }
     }
 }
