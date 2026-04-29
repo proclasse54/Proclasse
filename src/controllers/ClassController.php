@@ -183,6 +183,13 @@ class ClassController {
             // Groupes
             $db->prepare("DELETE FROM `groups` WHERE class_id = ?")->execute([$id]);
 
+            // Données Pronote brutes
+            $db->prepare("
+                DELETE spd FROM student_pronote_data spd
+                JOIN students s ON s.id = spd.student_id
+                WHERE s.class_id = ?
+            ")->execute([$id]);
+
             // Élèves
             $db->prepare("DELETE FROM students WHERE class_id = ?")->execute([$id]);
 
@@ -212,10 +219,12 @@ class ClassController {
             // Groupes
             $db->exec("TRUNCATE TABLE group_students");
             $db->exec("TRUNCATE TABLE `groups`");
+            // Données Pronote brutes
+            $db->exec("TRUNCATE TABLE student_pronote_data");
             // Élèves et classes
             $db->exec("TRUNCATE TABLE students");
             $db->exec("TRUNCATE TABLE classes");
-            // NB : rooms, seats, school_years → intentionnellement conservés
+            // NB : rooms, seats → intentionnellement conservés
             $db->exec("SET FOREIGN_KEY_CHECKS = 1");
             Response::json(['ok' => true]);
         } catch (\Throwable $e) {
