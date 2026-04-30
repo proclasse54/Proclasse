@@ -683,10 +683,11 @@ class SessionController
         // ── Protection : refuse la modification d'une séance passée ──
         // Une séance est « passée » si sa date est antérieure à aujourd'hui,
         // ou si c'est aujourd'hui mais que l'heure de début est déjà passée.
+        // Si time_start est NULL, la séance est considérée comme en cours (pas passée).
         $today       = date('Y-m-d');
         $currentTime = date('H:i:s');
         $sesDate     = $session['date'];
-        $sesTime     = $session['time_start'] ?? '00:00:00';
+        $sesTime     = $session['time_start'];  // null si pas d'heure définie
         $isPast = ($sesDate < $today)
                || ($sesDate === $today && $sesTime !== null && $sesTime < $currentTime);
         if ($isPast) {
