@@ -150,7 +150,7 @@ class IcsImportController
                     $group ? (int)$group['id'] : null
                 );
                 if (!$planId) {
-                    $errors[] = "Impossible de cr\u00e9er un plan pour : $className (pas d'\u00e9l\u00e8ves ou de salle ?)";
+                    $errors[] = "Impossible de créer un plan pour : $className (pas d'élèves ou de salle ?)";
                     continue;
                 }
                 $plan = ['id' => $planId];
@@ -169,12 +169,44 @@ class IcsImportController
                 continue;
             }
 
-            // --- Insérer la séance ---
-            $db->prepare(
-                "INSERT INTO sessions (plan_id, `date`, time_start, time_end, subject)
-                 VALUES (?, ?, ?, ?, ?)"
-            )->execute([$plan['id'], $date, $timeStart, $timeEnd, $subject]);
-            $inserted++;
+            // --- Insérer la séance + snapshot session_seats ---
+            // Le snapshot copie l'état actuel de seating_assignments dans session_seats,
+            // exactement comme SessionController::apiCreate() le fait.
+            // Sans ce snapshot, aucun élève n'apparaît sur les places en vue live.
+            $stmtPlanRoom = $db->prepare("SELECT room_id FROM seating_plans WHERE id = ?");
+            $stmtPlanRoom->execute([$plan['id']]);
+            $planRow = $stmtPlanRoom->fetch();
+
+            if (!$planRow) {
+                $errors[] = "Plan introuvable en base (id={$plan['id']}) pour : $className";
+                continue;
+            }
+
+            $db->beginTransaction();
+            try {
+                $db->prepare(
+                    "INSERT INTO sessions (plan_id, `date`, time_start, time_end, subject)
+                     VALUES (?, ?, ?, ?, ?)"
+                )->execute([$plan['id'], $date, $timeStart, $timeEnd, $subject]);
+                $sessionId = (int)$db->lastInsertId();
+
+                // Snapshot : copie de toutes les places de la salle avec l'élève affecté
+                // (NULL si la place est vide dans seating_assignments pour ce plan).
+                $db->prepare(
+                    "INSERT INTO session_seats (session_id, seat_id, student_id)
+                     SELECT ?, s.id, sa.student_id
+                     FROM seats s
+                     LEFT JOIN seating_assignments sa
+                            ON sa.seat_id = s.id AND sa.plan_id = ?
+                     WHERE s.room_id = ?"
+                )->execute([$sessionId, (int)$plan['id'], (int)$planRow['room_id']]);
+
+                $db->commit();
+                $inserted++;
+            } catch (\Throwable $e) {
+                $db->rollBack();
+                $errors[] = "Erreur insertion séance $className $date : " . $e->getMessage();
+            }
         }
 
         Response::json([
@@ -182,7 +214,7 @@ class IcsImportController
             'inserted'      => $inserted,
             'skipped'       => $skipped,
             'plans_created' => $created,
-            'ignored'       => $ignored, 
+            'ignored'       => $ignored,
             'errors'        => $errors,
         ]);
     }
@@ -334,35 +366,6 @@ class IcsImportController
 
         return $events;
     }
-
-    /*private function parseSummary(string $summary): array
-    {
-        // Stratégie 1 : chercher le dernier <...> ou [...] dans la chaîne entière
-        // Supporte les noms de groupes contenant " - "
-        if (preg_match('/[\[<]([^\]>]+)[\]>]\s*$/', $summary, $m)) {
-            // Le sujet = tout ce qui précède le premier " - [" ou " - <"
-            $subject = preg_replace('/\s*[-\u2013]\s*[\[<][^\]>]+[\]>]\s*$/', '', $summary);
-            // Si le subject contient encore un groupe (cas "MAT - [GR] - <GR>"), retirer aussi
-            $subject = preg_replace('/\s*[-\u2013]\s*[\[<][^\]>]+[\]>]\s*$/', '', $subject);
-            // Retirer un éventuel " - NomClasse" final résiduel si sujet = juste la matière
-            // => ne prendre que la partie avant le premier " - "
-            $subjectParts = explode(' - ', $subject);
-
-            return [trim($subjectParts[0]) ?: null, trim($m[1]) ?: null];
-        }
-
-        // Stratégie 2 : format "MATIERE - CLASSE" sans crochets (classe entière)
-        $dashPos = strpos($summary, ' - ');
-        if ($dashPos !== false) {
-            $subject = trim(substr($summary, 0, $dashPos));
-            $rawClass = trim(substr($summary, $dashPos + 3));
-            // Nettoyer les éventuels crochets résiduels
-            $rawClass = trim($rawClass, '[]<>()');
-            return [$subject ?: null, $rawClass ?: null];
-        }
-
-        return [null, null];
-    }*/
 
     private function parseSummary(string $summary): array
     {
