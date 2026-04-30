@@ -1,3 +1,7 @@
+/* Garantir que [hidden] l'emporte toujours sur les display CSS */
+[hidden] { display: none !important; }
+
+
 /* ============================================================
    ProClasse — Design System (optimisé tablette)
    ============================================================ */
@@ -1027,7 +1031,21 @@ details[open] .modal-details-icon {
   display: flex;
 }
 
+/* Overlay plein écran */
 .scope-modal {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  align-items: center;
+  justify-content: center;
+  background: oklch(0.1 0 0 / 0.55);
+  padding: var(--space-4);
+  backdrop-filter: blur(2px);
+}
+
+/* Boîte de la modale */
+.scope-modal-box {
   background: var(--surface-2);
   border-radius: var(--radius-xl);
   box-shadow: 0 24px 64px oklch(0 0 0 / 0.28);
@@ -1037,7 +1055,6 @@ details[open] .modal-details-icon {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  position: relative;
   animation: scopeModalIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1103,6 +1120,7 @@ details[open] .modal-details-icon {
   color: var(--text);
   background: var(--divider);
 }
+.scope-modal[hidden] { display: none; }
 
 /* Responsive mobile */
 @media (max-width: 480px) {
