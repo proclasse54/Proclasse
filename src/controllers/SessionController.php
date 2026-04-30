@@ -368,7 +368,7 @@ class SessionController
     }
 
     /**
-     * Retourne un résumé des observations d'une séance (pour affichage en modale).
+     * Retourne un résumé des observations d'une séance (pour affichage en modale)
      * Route : GET /sessions/{id}/observations/summary
      *
      * Réponse : { "count": 5, "rows": [ { "first_name", "last_name", "tag", "color", "icon" } ] }
@@ -644,7 +644,9 @@ class SessionController
      *      intentionnel qui diffère du plan de référence)
      *    - Sinon : swap source ↔ cible
      *
-     * Sécurité : refuse les modifications sur les séances passées (403).
+     * Sécurité : refuse les modifications sur les séances strictement passées
+     * (date antérieure à aujourd'hui). Les séances d'aujourd'hui restent toujours
+     * modifiables, même si l'heure de début est déjà dépassée.
      *
      * @param array $p  $p['id'] = identifiant de la séance
      */
@@ -680,22 +682,20 @@ class SessionController
             return;
         }
 
-        // ── Protection : refuse la modification d'une séance passée ──
-        // Une séance est « passée » si sa date est antérieure à aujourd'hui,
-        // ou si c'est aujourd'hui mais que l'heure de début est déjà passée.
-        // Si time_start est NULL, la séance est considérée comme en cours (pas passée).
-        $today       = date('Y-m-d');
-        $currentTime = date('H:i:s');
-        $sesDate     = $session['date'];
-        $sesTime     = $session['time_start'];  // null si pas d'heure définie
-        $isPast = ($sesDate < $today)
-               || ($sesDate === $today && $sesTime !== null && $sesTime < $currentTime);
+        // ── Protection : refuse la modification d'une séance strictement passée ──
+        // Seule la DATE compte : une séance d'aujourd'hui reste toujours modifiable,
+        // même si l'heure de début est déjà dépassée (l'enseignant peut corriger
+        // le plan après le cours).
+        $today  = date('Y-m-d');
+        $isPast = $session['date'] < $today;
         if ($isPast) {
             Response::json(['error' => 'Impossible de modifier une séance passée'], 403);
             return;
         }
 
-        $planId = (int)$session['plan_id'];
+        $planId  = (int)$session['plan_id'];
+        $sesDate = $session['date'];
+        $sesTime = $session['time_start'];
 
         try {
             $db->beginTransaction();
