@@ -16,6 +16,9 @@ for ($r = 0; $r < $session['room_rows']; $r++) {
 $obsMap = [];
 foreach ($observations as $o) { $obsMap[$o['student_id']][] = $o; }
 
+// ── Séance passée ? (date strictement < aujourd'hui) ──────────────────────
+$isPast = strtotime($session['date']) < strtotime(date('Y-m-d'));
+
 // URLs séance précédente / suivante (conserve from_week si présent)
 $fromWeek = preg_match('/^\d{4}-W\d{2}$/', $_GET['from_week'] ?? '') ? $_GET['from_week'] : null;
 $backUrl  = $fromWeek ? '/sessions?view=week&week=' . htmlspecialchars($fromWeek) : '/sessions';
@@ -77,8 +80,24 @@ ob_start();
     <?php if ($session['subject']): ?>
     <span class="badge"><?= htmlspecialchars($session['subject']) ?></span>
     <?php endif; ?>
+
+    <?php if ($isPast): ?>
+    <span class="badge badge-past" aria-label="Séance passée – lecture seule">
+      🔒 Lecture seule
+    </span>
+    <?php endif; ?>
   </div>
 </div>
+
+<?php if ($isPast): ?>
+<!-- ================================================
+     BANDEAU SÉANCE PASSÉE
+     ================================================ -->
+<div class="past-session-banner" role="note" aria-live="polite">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  Séance passée — le plan de salle est en <strong>lecture seule</strong>. Les tags restent modifiables.
+</div>
+<?php endif; ?>
 
 <!-- ================================================
      TOAST SESSION EXPIRÉE
@@ -95,7 +114,7 @@ ob_start();
 <div class="live-layout">
   <div class="live-room-wrap">
     <div class="room-label-top">Tableau / Bureau du professeur</div>
-    <div class="live-room" id="liveRoom" style="--room-cols: <?= $session['room_cols'] ?>">
+    <div class="live-room <?= $isPast ? 'live-room--readonly' : '' ?>" id="liveRoom" style="--room-cols: <?= $session['room_cols'] ?>">
       <?php foreach ($grid as $rowIdx => $cols): ?>
         <?php foreach ($cols as $colIdx => $seat): ?>
           <?php if ($seat === null): ?>
@@ -105,7 +124,7 @@ ob_start();
                  data-seat-id="<?= $seat['id'] ?>"
                  data-student-id="<?= $seat['student_id'] ?? '' ?>"
                  data-student-name="<?= $seat['student_id'] ? htmlspecialchars($seat['last_name'] . ' ' . $seat['first_name'], ENT_QUOTES) : '' ?>"
-                 <?= $seat['student_id'] ? 'draggable="true"' : '' ?>>
+                 <?= ($seat['student_id'] && !$isPast) ? 'draggable="true"' : '' ?>>
               <?php if ($seat['student_id']): ?>
                 <?php
                   $photoUrl = $seat['student_id'] ? '/photo?student_id=' . (int)$seat['student_id'] : null;
@@ -207,7 +226,8 @@ ob_start();
 </div>
 
 <script>
-const SESSION_ID = <?= (int)$session['id'] ?>;
+const SESSION_ID     = <?= (int)$session['id'] ?>;
+const IS_PAST_SESSION = <?= $isPast ? 'true' : 'false' ?>; // séance passée → lecture seule
 let currentStudentId = null;
 let currentStudentName = '';
 
@@ -282,9 +302,13 @@ function showSessionExpiredToast() {
  * Wrapper fetch() sûr pour les API JSON de ProClasse.
  *
  * Détection session expirée :
- *  1. Statut 401 / 403 -> toast
- *  2. Statut non-2xx + body non parseable en JSON (= page HTML login renvoyée) -> toast
- *  3. Statut 2xx mais body non parseable -> erreur technique normale (pas de toast)
+ *  1. Statut 401 → toast (authentification refusée)
+ *  2. Statut 403 → on tente de lire le JSON :
+ *     - { expired: true }  → toast session expirée
+ *     - { error: '...' }   → erreur métier, on relance avec le message
+ *     - JSON illisible     → toast (probable page HTML de login)
+ *  3. Statut non-2xx + body non parseable en JSON → toast
+ *  4. Statut 2xx mais body non parseable → erreur technique normale
  */
 async function apiFetch(url, options = {}) {
   let r;
@@ -294,20 +318,29 @@ async function apiFetch(url, options = {}) {
     throw networkErr; // perte réseau, pas une déconnexion
   }
 
-  // Authentification refusée explicitement
-  if (r.status === 401 || r.status === 403) {
+  // 401 : toujours une expiration de session
+  if (r.status === 401) {
     showSessionExpiredToast();
     throw new Error('Session expirée');
   }
 
-  // Essai de parse JSON
+  // 403 : peut être expiration OU refus métier (séance passée, etc.)
+  if (r.status === 403) {
+    let body;
+    try { body = await r.json(); } catch (_) { body = null; }
+    if (body && body.expired === true) {
+      showSessionExpiredToast();
+      throw new Error('Session expirée');
+    }
+    // Refus métier : on remonte l'erreur avec le message serveur
+    throw new Error(body?.error || 'Action non autorisée');
+  }
+
+  // Essai de parse JSON pour les autres statuts
   let data;
   try {
     data = await r.json();
   } catch (_) {
-    // Parsing échoué :
-    // - si status non-2xx : le serveur a probablement renvoyé la page de login (HTML)
-    // - si status 2xx     : réponse vide ou malformée côté serveur, erreur technique
     if (!r.ok) {
       showSessionExpiredToast();
       throw new Error('Session expirée');
@@ -390,7 +423,6 @@ let _scopeResolve  = null;
 
 function scopeOpen(studentName, isSwap) {
   scopeNameEl.textContent = studentName;
-  // Adapter le libellé selon permutation ou déplacement vers place vide
   const subtitle = scopeModal.querySelector('.scope-modal-subtitle');
   if (subtitle) {
     subtitle.textContent = isSwap
@@ -461,7 +493,8 @@ async function persistMove(studentId, sourceSeatId, targetSeatId, scope) {
 // moveSeat : swap ou déplacement vers place vide
 // ──────────────────────────────────────────────
 async function moveSeat(studentId, targetSeatId) {
-  if (_sessionExpired) return;
+  // Séance passée → aucun déplacement autorisé
+  if (IS_PAST_SESSION || _sessionExpired) return;
 
   const sourceSeatId = parseInt(
     Object.keys(seatStudentMap).find(k => seatStudentMap[k] === studentId)
@@ -494,7 +527,6 @@ async function moveSeat(studentId, targetSeatId) {
     const result = await persistMove(studentId, sourceSeatId, targetSeatId, scope);
     if (!result.ok) throw new Error(result.error || 'Erreur inconnue');
 
-    // Avertissement si propagation partielle
     if (result.skipped_sessions && result.skipped_sessions.length > 0) {
       showSkippedWarning(result.skipped_sessions);
     }
@@ -544,11 +576,11 @@ tagsList.addEventListener('click', e => {
   selectTag(btn.dataset.tag, btn.dataset.icon, btn.dataset.color);
 });
 
-// Drag souris
+// Drag souris — désactivé si séance passée
 let draggedStudentId = null;
 
 liveRoom.addEventListener('dragstart', e => {
-  if (_sessionExpired) { e.preventDefault(); return; }
+  if (IS_PAST_SESSION || _sessionExpired) { e.preventDefault(); return; }
   const seat = e.target.closest('.live-seat.occupied');
   if (!seat) { e.preventDefault(); return; }
 
@@ -571,7 +603,7 @@ liveRoom.addEventListener('dragend', e => {
 });
 
 liveRoom.addEventListener('dragover', e => {
-  if (_sessionExpired) return;
+  if (IS_PAST_SESSION || _sessionExpired) return;
   const seat = e.target.closest('.live-seat:not(.inactive)');
   if (!seat) return;
   e.preventDefault();
@@ -585,7 +617,7 @@ liveRoom.addEventListener('dragleave', e => {
 });
 
 liveRoom.addEventListener('drop', e => {
-  if (_sessionExpired) return;
+  if (IS_PAST_SESSION || _sessionExpired) return;
   const seat = e.target.closest('.live-seat:not(.inactive)');
   if (!seat) return;
 
@@ -602,7 +634,7 @@ liveRoom.addEventListener('drop', e => {
   }
 });
 
-// Tactile
+// Tactile — désactivée si séance passée
 const DRAG_THRESHOLD = 8;
 let touchClone = null;
 let touchStudId = null;
@@ -614,7 +646,7 @@ let touchOffY = 0;
 let touchIsDrag = false;
 
 liveRoom.addEventListener('touchstart', e => {
-  if (_sessionExpired) return;
+  if (IS_PAST_SESSION || _sessionExpired) return;
   if (e.target.closest('.tag-chip')) return;
 
   const seat = e.target.closest('.live-seat.occupied');
@@ -690,7 +722,7 @@ liveRoom.addEventListener('touchend', e => {
     liveRoom.classList.remove('drag-active');
     liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
 
-    if (!_sessionExpired && target && target !== touchSrcEl && touchStudId !== null) {
+    if (!IS_PAST_SESSION && !_sessionExpired && target && target !== touchSrcEl && touchStudId !== null) {
       const targetSeatId = parseInt(target.dataset.seatId);
       if (!isNaN(targetSeatId)) {
         target._dragJustHappened = true;
@@ -810,6 +842,38 @@ a.live-nav-btn::after {
 a.live-nav-btn:hover::after,
 a.live-nav-btn:focus-visible::after {
   opacity: 1;
+}
+
+/* ── Badge lecture seule ── */
+.badge-past {
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ── Bandeau séance passée ── */
+.past-session-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  border-bottom: 1px solid oklch(from var(--color-warning, #964219) l c h / 0.2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* ── Plan de salle lecture seule ── */
+.live-room--readonly .live-seat.occupied {
+  cursor: default;
+  opacity: 0.88;
+}
+.live-room--readonly .live-seat.occupied:active {
+  transform: none;
 }
 
 /* ── Toast session expirée ── */
