@@ -4,6 +4,17 @@ RewriteEngine On
 # Bloquer /install
 RewriteRule ^install$ - [F,L]
 
+# Bloquer les fichiers de debug — accès localhost uniquement
+<Files "debug_session.php">
+    Require local
+</Files>
+<Files "diagnostic_sessions.php">
+    Require local
+</Files>
+<Files "fix_duplicates.php">
+    Require local
+</Files>
+
 # Servir les fichiers et dossiers existants directement
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
