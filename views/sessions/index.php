@@ -233,7 +233,7 @@
 
 // ── Modal & CRUD ────────────────────────────────────────────
 function openNewSessionModal() {
-    document.getElementById('newSessionModal').classList.add('is-open');
+  document.getElementById('newSessionModal').removeAttribute('hidden');
 }
 
 function createSession(e) {
@@ -287,7 +287,7 @@ async function deleteSession(id) {
     document.getElementById('deleteModalBody').innerHTML = html;
     const modal = document.getElementById('deleteModal');
     modal.dataset.sessionId = id;
-    modal.classList.add('is-open');
+    modal.removeAttribute('hidden');
 }
 
 async function doDeleteSession(id) {
@@ -301,12 +301,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
         const id = document.getElementById('deleteModal').dataset.sessionId;
-        document.getElementById('deleteModal').classList.remove('is-open');
+        document.getElementById('deleteModal').setAttribute('hidden', '');
         await doDeleteSession(id);
     });
 
     document.getElementById('btnDeleteCancel').addEventListener('click', () => {
-        document.getElementById('deleteModal').classList.remove('is-open');
+        document.getElementById('deleteModal').setAttribute('hidden', '');
     });
 
     // "Sauvegarder" : télécharge le CSV, laisse la modale ouverte pour décider ensuite
