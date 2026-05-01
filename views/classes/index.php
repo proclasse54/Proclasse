@@ -126,7 +126,7 @@ function openImportModal() {
   document.getElementById('pronoteData').value = '';
   document.getElementById('importPreview').hidden = true;
   document.getElementById('importBtn').disabled = true;
-  document.getElementById('importModal').hidden = false;
+  document.getElementById('importModal').classList.add('is-open');
   setTimeout(() => document.getElementById('pronoteData').focus(), 100);
 }
 

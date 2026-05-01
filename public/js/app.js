@@ -13,7 +13,7 @@
 // ── Helpers globaux ───────────────────────────────────────
 function closeModal(id) {
   const el = document.getElementById(id);
-  if (el) el.hidden = true;
+  if (el) el.classList.remove('is-open');
 }
 
 // Fermer modale en cliquant sur l'overlay
