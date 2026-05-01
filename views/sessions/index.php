@@ -316,14 +316,16 @@
 .week-col-body:not(.dragging) {
   cursor: cell;
 }
-/* ── Hover highlight sur les cases vides ── */
+/* ── Hover highlight sur les créneaux vides ── */
 .week-hover-bar {
   position: absolute;
   left: 2px; right: 2px;
-  background: color-mix(in oklch, var(--text) 8%, transparent);
+  background: color-mix(in oklch, var(--primary) 20%, transparent);
+  border: 1px dashed color-mix(in oklch, var(--primary) 50%, transparent);
   border-radius: var(--radius-sm);
   pointer-events: none;
   z-index: 5;
+  transition: top 80ms ease;
 }
 /* ── Case cliquée / sélectionnée ── */
 .week-selected-bar {
