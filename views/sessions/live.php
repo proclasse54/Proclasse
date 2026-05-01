@@ -83,7 +83,7 @@ ob_start();
     </span>
 
     <span>&middot;</span>
-    <?php if ($session['subject']): ?>
+    <?php if (!empty($session['subject'])): ?>
     <span class="badge"><?= htmlspecialchars($session['subject']) ?></span>
     <?php endif; ?>
 
