@@ -765,9 +765,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const id = document.getElementById('deleteModal').dataset.sessionId;
     window.open('/api/sessions/' + id + '/observations-export', '_blank');
   });
-
-  // Init drag-to-create (seulement si la vue semaine est rendue)
-  initDragCreate();
+  // NB : initDragCreate() est désormais appelé par app.js via setView('week')
+  //      une fois que viewWeek est visible, pour que getBoundingClientRect() soit correct.
 });
 
 // ── Import ICS ──────────────────────────────────────────────
