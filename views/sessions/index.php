@@ -351,6 +351,25 @@ const TIME_SLOTS = [
   '19:00'
 ];
 
+
+// ─────────────────────────────────────────────────────────────
+// UI éphémère de la vue semaine (barres de sélection / drag)
+// Permet de repartir d'un état visuel propre après ouverture/
+// fermeture de modale ou interruption d'une interaction.
+// ─────────────────────────────────────────────────────────────
+function clearWeekTransientUi() {
+  // Supprime les barres de sélection visuelle (clic simple + drag)
+  document.querySelectorAll('.week-selected-bar, .drag-selection').forEach(el => el.remove());
+
+  // Nettoie l'état CSS "dragging" sur les colonnes de la vue semaine
+  document.querySelectorAll('.week-col-body.dragging').forEach(col => {
+    col.classList.remove('dragging');
+  });
+
+  // Réinitialise l'état global de drag pour éviter des incohérences
+  dragState = null;
+}
+
 // ══════════════════════════════════════════════════════════
 //  TOGGLE VUE LISTE / SEMAINE
 // ══════════════════════════════════════════════════════════
@@ -418,29 +437,36 @@ function initDragCreate() {
     const date        = col.dataset.date;
 
     let hoverEl = null;
+
+    // Hover visuel sur les créneaux vides (demi-heure)
     col.addEventListener('mouseenter', () => {
-      if (dragState) return;
+      if (dragState) return; // pas de hover pendant un drag actif
       hoverEl = document.createElement('div');
       hoverEl.className = 'week-hover-bar';
       hoverEl.style.height = (pxParHeure / 2) + 'px';
       col.appendChild(hoverEl);
     });
+
     col.addEventListener('mousemove', e => {
       if (!hoverEl || dragState) return;
       if (e.target.closest('.week-card')) {
+        // Ne pas surligner derrière une séance existante
         hoverEl.style.display = 'none';
         return;
       }
       hoverEl.style.display = '';
       const y = getRelativeY(e, col);
+      // Snap sur les demi-heures en minutes absolues (à partir de heureDebut)
       const snapMin = Math.round((y / pxParHeure * 60 - 15) / 30) * 30 + heureDebut * 60;
       const top = ((snapMin / 60) - heureDebut) * pxParHeure;
       hoverEl.style.top = Math.round(top) + 'px';
     });
+
     col.addEventListener('mouseleave', () => {
       if (hoverEl) { hoverEl.remove(); hoverEl = null; }
     });
 
+    // Clic simple = petite barre de sélection fixe (sans ouverture de modale)
     col.addEventListener('click', e => {
       if (e.target.closest('.week-card') || dragState) return;
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
@@ -454,14 +480,15 @@ function initDragCreate() {
       col.appendChild(sel);
     });
 
+    // Drag souris = création d'un créneau de durée variable
     col.addEventListener('mousedown', e => {
       if (e.target.closest('.week-card')) return;
       e.preventDefault();
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
       if (hoverEl) { hoverEl.style.display = 'none'; }
-      const y       = getRelativeY(e, col);
+      const y        = getRelativeY(e, col);
       const startMin = yToMinutes(y, heureDebut, pxParHeure);
-      const endMin   = startMin + 60;
+      const endMin   = startMin + 60; // durée par défaut = 1h
       const el = document.createElement('div');
       el.className = 'drag-selection';
       col.appendChild(el);
@@ -470,6 +497,7 @@ function initDragCreate() {
       col.classList.add('dragging');
     });
 
+    // Drag tactile = même logique que souris, flag fromTouch pour les events globaux
     col.addEventListener('touchstart', e => {
       if (e.target.closest('.week-card')) return;
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
@@ -485,20 +513,23 @@ function initDragCreate() {
     }, { passive: true });
   });
 
+  // Drag en cours : adapte la hauteur du bloc de sélection (souris)
   document.addEventListener('mousemove', e => {
     if (!dragState || dragState.fromTouch) return;
     const y      = getRelativeY(e, dragState.col);
     const curMin = yToMinutes(y, dragState.heureDebut, dragState.pxParHeure);
-    dragState.endMin = Math.max(curMin, dragState.startMin + 30);
+    dragState.endMin = Math.max(curMin, dragState.startMin + 30); // min 30 minutes
     updateDragEl(dragState.el, dragState.startMin, dragState.endMin,
                  dragState.heureDebut, dragState.pxParHeure);
   });
 
+  // Fin de drag souris → création de séance + ouverture modale
   document.addEventListener('mouseup', e => {
     if (!dragState || dragState.fromTouch) return;
     finalizeDrag();
   });
 
+  // Drag tactile
   document.addEventListener('touchmove', e => {
     if (!dragState || !dragState.fromTouch) return;
     const y      = getRelativeY(e, dragState.col);
@@ -508,6 +539,7 @@ function initDragCreate() {
                  dragState.heureDebut, dragState.pxParHeure);
   }, { passive: true });
 
+  // Fin de drag tactile → création de séance + ouverture modale
   document.addEventListener('touchend', e => {
     if (!dragState || !dragState.fromTouch) return;
     finalizeDrag();
@@ -530,6 +562,9 @@ function finalizeDrag() {
 let _slotLocked = false;
 
 function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
+    // Toujours repartir d'une vue semaine propre avant d'ouvrir la modale
+  clearWeekTransientUi();
+  
   buildClassSelect();
   buildTimeSelects();
 
@@ -574,9 +609,20 @@ function nsUnlockSlot() {
 }
 
 function closeNewSessionModal() {
-  document.getElementById('newSessionModal').setAttribute('hidden', '');
-  document.getElementById('newSessionForm').reset();
+  const modal = document.getElementById('newSessionModal');
+  const form  = document.getElementById('newSessionForm');
+
+  // Cache la modale
+  modal.setAttribute('hidden', '');
+
+  // Reset complet du formulaire et des éléments de slot
+  form.reset();
+  document.getElementById('nsSlotBanner').setAttribute('hidden', '');
+  document.getElementById('nsManualSlot').style.display = '';
   _slotLocked = false;
+
+  // Nettoie également toute l'UI temporaire du calendrier semaine
+  clearWeekTransientUi();
 }
 
 function buildTimeSelects() {
