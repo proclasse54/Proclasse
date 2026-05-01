@@ -82,8 +82,8 @@
 <div id="viewWeek" hidden>
 
   <?php
-    $prevWeek = (clone $weekDate)->modify('-1 week')->format('o\-\WW');
-    $nextWeek = (clone $weekDate)->modify('+1 week')->format('o\-\WW');
+    $prevWeek = (clone $weekDate)->modify('-1 week')->format('o\\-\\WW');
+    $nextWeek = (clone $weekDate)->modify('+1 week')->format('o\\-\\WW');
     $weekLabel = 'Semaine du '.(new \DateTime($weekStart))->format('d/m').' au '.(new \DateTime($weekEnd))->format('d/m/Y');
   ?>
 
@@ -104,9 +104,8 @@
     foreach ($weekSessions as $ws) {
         $byDate[$ws['date']][] = $ws;
     }
-    // APRÈS — plage calculée dynamiquement sur les séances de la semaine
-    $heureDebut = 8;   // plancher minimum
-    $heureFin   = 18;  // plafond minimum
+    $heureDebut = 8;
+    $heureFin   = 18;
 
     foreach ($weekSessions as $_ws) {
         if ($_ws['time_start']) {
@@ -116,7 +115,6 @@
         if ($_ws['time_end']) {
             $h = (int)substr($_ws['time_end'], 0, 2);
             $m = (int)substr($_ws['time_end'], 3, 2);
-            // Si la séance finit après l'heure plafond, étendre (+ arrondir à l'heure sup)
             $hFin = $m > 0 ? $h + 1 : $h;
             if ($hFin > $heureFin) $heureFin = $hFin;
         }
@@ -124,7 +122,7 @@
 
     $pxParHeure   = 64;
     $hauteurTotal = ($heureFin - $heureDebut) * $pxParHeure;
-    $currentWeekSlug = $weekDate->format('o-\WW');
+    $currentWeekSlug = $weekDate->format('o-\\WW');
   ?>
 
   <!-- Agenda : axe horaire + grille 5 jours -->
@@ -132,7 +130,7 @@
 
     <!-- Colonne axe horaire -->
     <div class="week-axis">
-      <div class="week-axis-header"></div><!-- vide, aligne avec les headers de jours -->
+      <div class="week-axis-header"></div>
       <div class="week-axis-body" style="height:<?= $hauteurTotal ?>px;">
         <?php for ($h = $heureDebut; $h <= $heureFin; $h++): ?>
         <div class="week-axis-label" style="top:<?= ($h - $heureDebut) * $pxParHeure ?>px;">
@@ -152,7 +150,6 @@
         </div>
         <div class="week-col-body" style="height:<?= $hauteurTotal ?>px;">
           <?php if (empty($byDate[$d])): ?>
-            <!-- jour vide, les lignes horaires suffisent -->
           <?php else: ?>
             <?php foreach ($byDate[$d] as $ws):
               if (!$ws['time_start'] || !$ws['time_end']) continue;
@@ -186,39 +183,80 @@
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
 <div id="newSessionModal" class="modal-overlay" hidden>
-  <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);">
+  <div class="modal-box" style="width:min(560px,95vw);">
+
+    <div class="modal-header">
       <h2>Nouvelle séance</h2>
-      <button onclick="document.getElementById('newSessionModal').classList.remove('is-open')">&times;</button>
+      <button class="modal-close" onclick="closeNewSessionModal()" aria-label="Fermer">&times;</button>
     </div>
-    <form onsubmit="createSession(event)">
-      <label>Date <input type="date" name="date" required value="<?= date('Y-m-d') ?>"></label>
-      <label>Heure de début <input type="time" name="time_start"></label>
-      <label>Heure de fin   <input type="time" name="time_end"></label>
-      <label>Classe / Salle
-        <select name="plan_id" required>
-          <option value="">&mdash; Choisir &mdash;</option>
-          <?php foreach ($plans as $pl): ?>
-          <option value="<?= $pl['id'] ?>"><?= htmlspecialchars($pl['class_name'].' &ndash; '.$pl['room_name']) ?></option>
-          <?php endforeach ?>
-        </select>
-      </label>
-      <?php if (empty($plans)): ?>
-        <p style="color:var(--color-warning);">&#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.</p>
-      <?php endif ?>
-      <label>Mati&egrave;re (optionnel) <input type="text" name="subject" placeholder="ex: Math&eacute;matiques"></label>
-      <div style="display:flex;gap:.5rem;margin-top:var(--space-4);justify-content:flex-end;">
-        <button type="button" onclick="document.getElementById('newSessionModal').classList.remove('is-open')" class="btn">Annuler</button>
-        <button type="submit" class="btn btn-primary">Démarrer</button>
+
+    <form id="newSessionForm" onsubmit="createSession(event)" style="display:flex;flex-direction:column;gap:var(--space-5);">
+
+      <!-- Ligne date + matière -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
+        <div class="form-group">
+          <label class="form-label" for="nsDate">Date</label>
+          <input class="form-input" type="date" id="nsDate" name="date" required value="<?= date('Y-m-d') ?>">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="nsSubject">Matière <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
+          <input class="form-input" type="text" id="nsSubject" name="subject" placeholder="ex : Mathématiques">
+        </div>
       </div>
+
+      <!-- Ligne heures -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
+        <div class="form-group">
+          <label class="form-label" for="nsTimeStart">Heure de début</label>
+          <select class="form-input" id="nsTimeStart" name="time_start"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="nsTimeEnd">Heure de fin</label>
+          <select class="form-input" id="nsTimeEnd" name="time_end"></select>
+        </div>
+      </div>
+
+      <!-- Ligne classe -->
+      <div class="form-group">
+        <label class="form-label" for="nsClass">Classe</label>
+        <select class="form-input" id="nsClass" required>
+          <option value="">— Choisir une classe —</option>
+        </select>
+      </div>
+
+      <!-- Ligne salle -->
+      <div class="form-group">
+        <label class="form-label" for="nsRoom">Salle</label>
+        <select class="form-input" id="nsRoom" disabled required>
+          <option value="">— Choisir d'abord une classe —</option>
+        </select>
+      </div>
+
+      <!-- Ligne disposition -->
+      <div class="form-group">
+        <label class="form-label" for="nsPlan">Disposition</label>
+        <select class="form-input" id="nsPlan" name="plan_id" disabled required>
+          <option value="">— Choisir d'abord une salle —</option>
+        </select>
+        <?php if (empty($plans)): ?>
+          <p style="margin-top:var(--space-2);color:var(--danger);font-size:var(--text-sm);">
+            &#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.
+          </p>
+        <?php endif ?>
+      </div>
+
+      <div style="display:flex;gap:var(--space-3);justify-content:flex-end;padding-top:var(--space-2);border-top:1px solid var(--divider);">
+        <button type="button" onclick="closeNewSessionModal()" class="btn">Annuler</button>
+        <button type="submit" class="btn btn-primary" id="nsSubmitBtn" disabled>Démarrer la séance</button>
+      </div>
+
     </form>
   </div>
 </div>
 
 <!-- ═══ MODAL SUPPRESSION SÉANCE ═══ -->
 <div id="deleteModal" class="modal-overlay" hidden>
-  <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);
-              width:min(540px,92vw);max-height:80vh;overflow-y:auto;">
+  <div class="modal-box" style="max-height:80vh;overflow-y:auto;">
     <h2 style="margin-bottom:var(--space-4);">&#9888;&#65039; Supprimer cette séance&nbsp;?</h2>
     <div id="deleteModalBody"></div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;margin-top:var(--space-4);">
@@ -230,116 +268,124 @@
 </div>
 
 <script>
+// ── Données plans injectées depuis PHP ──────────────────────
+const PLANS = <?= json_encode(array_values($plans), JSON_HEX_TAG) ?>;
 
-// ── Modal & CRUD ────────────────────────────────────────────
+// Créneaux horaires fixes (adapter si besoin)
+const TIME_SLOTS = [
+  '07:00','07:30','08:00','08:30','09:00','09:30',
+  '10:00','10:30','11:00','11:30','12:00','12:30',
+  '13:00','13:30','14:00','14:30','15:00','15:30',
+  '16:00','16:30','17:00','17:30','18:00','18:30',
+  '19:00'
+];
+
+// ── Helpers modales ─────────────────────────────────────────
 function openNewSessionModal() {
-  document.getElementById('newSessionModal').removeAttribute('hidden');
+    document.getElementById('newSessionModal').classList.add('is-open');
 }
 
 function createSession(e) {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    fetch('/api/sessions', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-            plan_id:    parseInt(fd.get('plan_id'), 10),
-            date:       fd.get('date'),
-            time_start: fd.get('time_start') || null,
-            time_end:   fd.get('time_end')   || null,
-            subject:    fd.get('subject')    || null,
-        }),
-    }).then(r => r.json()).then(d => {
-        if (d.ok) window.location = '/sessions/' + d.id + '/live';
-        else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
-    });
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  fetch('/api/sessions', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      plan_id:    parseInt(fd.get('plan_id'), 10),
+      date:       fd.get('date'),
+      time_start: fd.get('time_start') || null,
+      time_end:   fd.get('time_end')   || null,
+      subject:    fd.get('subject')    || null,
+    }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) window.location = '/sessions/' + d.id + '/live';
+    else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+  });
 }
 
+// ── Suppression séance ──────────────────────────────────────
 async function deleteSession(id) {
-    // 1. Vérifier s'il y a des observations
-    const summary = await fetch('/api/sessions/' + id + '/observations-summary')
-                          .then(r => r.json());
+  const summary = await fetch('/api/sessions/' + id + '/observations-summary')
+                        .then(r => r.json());
 
-    if (summary.count === 0) {
-        // Pas d'observations → confirmation simple
-        if (!confirm('Supprimer cette séance ? (aucune observation enregistrée)')) return;
-        await doDeleteSession(id);
-        return;
-    }
+  if (summary.count === 0) {
+    if (!confirm('Supprimer cette séance ? (aucune observation enregistrée)')) return;
+    await doDeleteSession(id);
+    return;
+  }
 
-    // 2. Construire le détail par élève
-    const byStudent = {};
-    summary.rows.forEach(r => {
-        const key = r.last_name + ' ' + r.first_name;
-        if (!byStudent[key]) byStudent[key] = [];
-        byStudent[key].push((r.icon ?? '') + ' ' + r.tag);
-    });
+  const byStudent = {};
+  summary.rows.forEach(r => {
+    const key = r.last_name + ' ' + r.first_name;
+    if (!byStudent[key]) byStudent[key] = [];
+    byStudent[key].push((r.icon ?? '') + ' ' + r.tag);
+  });
 
-    let html = `<p style="margin-bottom:.75rem">
-        <strong>${summary.count} observation(s)</strong> seront définitivement supprimées&nbsp;:
-    </p><ul style="margin:.5rem 0 1rem 1.25rem;line-height:2">`;
-    for (const [student, tags] of Object.entries(byStudent)) {
-        html += `<li><strong>${student}</strong>&nbsp;: ${tags.join(', ')}</li>`;
-    }
-    html += `</ul>`;
+  let html = `<p style="margin-bottom:.75rem">
+    <strong>${summary.count} observation(s)</strong> seront définitivement supprimées&nbsp;:
+  </p><ul style="margin:.5rem 0 1rem 1.25rem;line-height:2">`;
+  for (const [student, tags] of Object.entries(byStudent)) {
+    html += `<li><strong>${student}</strong>&nbsp;: ${tags.join(', ')}</li>`;
+  }
+  html += `</ul>`;
 
     // 3. Afficher la modale
     document.getElementById('deleteModalBody').innerHTML = html;
     const modal = document.getElementById('deleteModal');
     modal.dataset.sessionId = id;
-    modal.removeAttribute('hidden');
+    modal.classList.add('is-open');
 }
 
 async function doDeleteSession(id) {
-    const d = await fetch('/api/sessions/' + id, {method:'DELETE'}).then(r => r.json());
-    if (d.ok) location.reload();
-    else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+  const d = await fetch('/api/sessions/' + id, {method:'DELETE'}).then(r => r.json());
+  if (d.ok) location.reload();
+  else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
 }
 
-// ── Boutons de la modale de suppression ──────────────────────
+// ── Boutons modale suppression ──────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
         const id = document.getElementById('deleteModal').dataset.sessionId;
-        document.getElementById('deleteModal').setAttribute('hidden', '');
+        document.getElementById('deleteModal').classList.remove('is-open');
         await doDeleteSession(id);
     });
 
     document.getElementById('btnDeleteCancel').addEventListener('click', () => {
-        document.getElementById('deleteModal').setAttribute('hidden', '');
+        document.getElementById('deleteModal').classList.remove('is-open');
     });
 
-    // "Sauvegarder" : télécharge le CSV, laisse la modale ouverte pour décider ensuite
-    document.getElementById('btnDeleteSave').addEventListener('click', () => {
-        const id = document.getElementById('deleteModal').dataset.sessionId;
-        window.open('/api/sessions/' + id + '/observations-export', '_blank');
-    });
+  document.getElementById('btnDeleteSave').addEventListener('click', () => {
+    const id = document.getElementById('deleteModal').dataset.sessionId;
+    window.open('/api/sessions/' + id + '/observations-export', '_blank');
+  });
 });
 
-// ── Import ICS ────────────────────────────────────────────
+// ── Import ICS ──────────────────────────────────────────────
 document.getElementById('icsForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    const btn = this.querySelector('button[type=submit]');
-    btn.disabled = true; btn.textContent = 'Import en cours…';
-    const data = await fetch('/api/sessions/import-ics', {
-        method: 'POST', body: new FormData(this),
-    }).then(r => r.json());
-    const el = document.getElementById('icsResult');
-    if (data.ok) {
-        let html = `<span style="color:var(--color-success,green)">
-            ✅ ${data.inserted} séance(s) créée(s)
-            ${data.plans_created ? ` &middot; ${data.plans_created} plan(s) généré(s)` : ''}
-            &middot; ${data.skipped} ignorée(s) (doublons)
-        </span>`;
-        if (data.errors?.length) {
-            html += '<br><details><summary>&#9888;&#65039; ' + data.errors.length + ' avertissement(s)</summary>'
-                  + data.errors.map(e => `<div>&bull; ${e}</div>`).join('') + '</details>';
-        }
-        el.innerHTML = html;
-        setTimeout(() => location.reload(), 2000);
-    } else {
-        el.innerHTML = `<span style="color:var(--color-error,red)">❌ ${data.error}</span>`;
+  e.preventDefault();
+  const btn = this.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = 'Import en cours…';
+  const data = await fetch('/api/sessions/import-ics', {
+    method: 'POST', body: new FormData(this),
+  }).then(r => r.json());
+  const el = document.getElementById('icsResult');
+  if (data.ok) {
+    let html = `<span style="color:var(--color-success,green)">
+      ✅ ${data.inserted} séance(s) créée(s)
+      ${data.plans_created ? ` &middot; ${data.plans_created} plan(s) généré(s)` : ''}
+      &middot; ${data.skipped} ignorée(s) (doublons)
+    </span>`;
+    if (data.errors?.length) {
+      html += '<br><details><summary>&#9888;&#65039; ' + data.errors.length + ' avertissement(s)</summary>'
+            + data.errors.map(e => `<div>&bull; ${e}</div>`).join('') + '</details>';
     }
-    btn.disabled = false; btn.textContent = 'Importer les séances';
+    el.innerHTML = html;
+    setTimeout(() => location.reload(), 2000);
+  } else {
+    el.innerHTML = `<span style="color:var(--color-error,red)">❌ ${data.error}</span>`;
+  }
+  btn.disabled = false; btn.textContent = 'Importer les séances';
 });
 </script>
