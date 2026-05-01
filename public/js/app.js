@@ -13,20 +13,21 @@
 // ── Helpers globaux ───────────────────────────────────────
 function closeModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.remove('is-open');
+  if (el) el.setAttribute('hidden', '');
 }
 
 // Fermer modale en cliquant sur l'overlay
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-overlay')) {
-    e.target.classList.remove('is-open');
+    e.target.setAttribute('hidden', '');
   }
 });
 
 // Fermer avec Escape
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay.is-open').forEach(m => m.classList.remove('is-open'));  }
+    document.querySelectorAll('.modal-overlay:not([hidden])').forEach(m => m.setAttribute('hidden', ''));
+  }
 });
 
 

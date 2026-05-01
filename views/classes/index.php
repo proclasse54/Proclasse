@@ -126,7 +126,7 @@ function openImportModal() {
   document.getElementById('pronoteData').value = '';
   document.getElementById('importPreview').hidden = true;
   document.getElementById('importBtn').disabled = true;
-  document.getElementById('importModal').classList.add('is-open');
+  document.getElementById('importModal').removeAttribute('hidden');
   setTimeout(() => document.getElementById('pronoteData').focus(), 100);
 }
 
@@ -186,7 +186,7 @@ function doImport() {
 }
 
 // ── Création manuelle ──────────────────────────────────────
-function openCreateClassModal() { document.getElementById('createClassModal').hidden = false; }
+function openCreateClassModal() { document.getElementById('createClassModal').removeAttribute('hidden'); }
 function createClass(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
