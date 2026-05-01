@@ -433,7 +433,7 @@ function initDragCreate() {
       }
       hoverEl.style.display = '';
       const y = getRelativeY(e, col);
-      const snapMin = Math.round((y / pxParHeure * 60) / 30) * 30;
+      const snapMin = Math.round((y / pxParHeure * 60 - 15) / 30) * 30 + heureDebut * 60;
       const top = ((snapMin / 60) - heureDebut) * pxParHeure;
       hoverEl.style.top = Math.round(top) + 'px';
     });
@@ -445,7 +445,7 @@ function initDragCreate() {
       if (e.target.closest('.week-card') || dragState) return;
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
       const y = getRelativeY(e, col);
-      const snapMin = Math.round((y / pxParHeure * 60) / 30) * 30;
+      const snapMin = Math.round((y / pxParHeure * 60 - 15) / 30) * 30 + heureDebut * 60;
       const top = ((snapMin / 60) - heureDebut) * pxParHeure;
       const sel = document.createElement('div');
       sel.className = 'week-selected-bar';
