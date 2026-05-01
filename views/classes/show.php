@@ -99,7 +99,7 @@
 </div>
 
 <!-- ── Modal import Pronote (coller) ────────────────────── -->
-<div class="modal-overlay" id="importModal">
+<div class="modal-overlay" id="importModal" hidden>
   <div class="modal modal-lg">
     <div class="modal-header">
       <h2>Importer depuis Pronote</h2>
@@ -134,7 +134,7 @@
 </div>
 
 <!-- ── Modal nouveau plan ─────────────────────────────── -->
-<div class="modal-overlay" id="newPlanModal">
+<div class="modal-overlay" id="newPlanModal" hidden>
   <div class="modal">
     <div class="modal-header">
       <h2>Nouveau plan de salle</h2>

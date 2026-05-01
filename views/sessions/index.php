@@ -185,7 +185,7 @@
 </div>
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
-<div id="newSessionModal" class="modal-overlay">
+<div id="newSessionModal" class="modal-overlay" hidden>
   <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);width:min(480px,90vw);">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-4);">
       <h2>Nouvelle séance</h2>
@@ -216,7 +216,7 @@
 </div>
 
 <!-- ═══ MODAL SUPPRESSION SÉANCE ═══ -->
-<div id="deleteModal" class="modal-overlay">
+<div id="deleteModal" class="modal-overlay" hidden>
   <div style="background:var(--surface);padding:var(--space-6);border-radius:var(--radius-lg);
               width:min(540px,92vw);max-height:80vh;overflow-y:auto;">
     <h2 style="margin-bottom:var(--space-4);">&#9888;&#65039; Supprimer cette séance&nbsp;?</h2>
