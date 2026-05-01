@@ -300,8 +300,8 @@
 .drag-selection {
   position: absolute;
   left: 2px; right: 2px;
-  background: color-mix(in oklch, var(--color-primary) 25%, transparent);
-  border: 2px solid var(--color-primary);
+  background: color-mix(in oklch, var(--primary) 25%, transparent);
+  border: 2px solid var(--primary);
   border-radius: var(--radius-sm);
   pointer-events: none;
   z-index: 10;
@@ -320,7 +320,7 @@
 .week-hover-bar {
   position: absolute;
   left: 2px; right: 2px;
-  background: color-mix(in oklch, var(--color-text) 8%, transparent);
+  background: color-mix(in oklch, var(--text) 8%, transparent);
   border-radius: var(--radius-sm);
   pointer-events: none;
   z-index: 5;
@@ -329,8 +329,8 @@
 .week-selected-bar {
   position: absolute;
   left: 2px; right: 2px;
-  background: color-mix(in oklch, var(--color-primary) 18%, transparent);
-  border: 1.5px solid color-mix(in oklch, var(--color-primary) 55%, transparent);
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  border: 1.5px solid color-mix(in oklch, var(--primary) 55%, transparent);
   border-radius: var(--radius-sm);
   pointer-events: none;
   z-index: 6;
@@ -366,8 +366,6 @@ function setView(view) {
     viewWeek.removeAttribute('hidden');
     btnList.classList.remove('active');
     btnWeek.classList.add('active');
-    // initDragCreate() appelé UNE SEULE FOIS une fois viewWeek visible,
-    // pour que getBoundingClientRect() retourne des valeurs correctes.
     if (!dragInitialized) {
       initDragCreate();
       dragInitialized = true;
@@ -384,12 +382,8 @@ function setView(view) {
 //  DRAG-TO-CREATE SUR LE CALENDRIER
 // ══════════════════════════════════════════════════════════
 
-let dragState = null; // { col, date, heureDebut, pxParHeure, startMin, endMin, el }
+let dragState = null;
 
-/**
- * Convertit une position Y (px dans le col-body) en minutes depuis minuit,
- * snappée aux tranches de 30 minutes.
- */
 function yToMinutes(y, heureDebut, pxParHeure) {
   const raw = (y / pxParHeure) * 60 + heureDebut * 60;
   return Math.round(raw / 30) * 30;
@@ -421,7 +415,6 @@ function initDragCreate() {
     const pxParHeure  = parseInt(col.dataset.pxParHeure);
     const date        = col.dataset.date;
 
-    // ── HOVER : barre grisée sous le curseur ──
     let hoverEl = null;
     col.addEventListener('mouseenter', () => {
       if (dragState) return;
@@ -446,7 +439,6 @@ function initDragCreate() {
       if (hoverEl) { hoverEl.remove(); hoverEl = null; }
     });
 
-    // ── CLICK : sélection visuelle persistante ──
     col.addEventListener('click', e => {
       if (e.target.closest('.week-card') || dragState) return;
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
@@ -460,18 +452,14 @@ function initDragCreate() {
       col.appendChild(sel);
     });
 
-    // ── MOUSE ──
     col.addEventListener('mousedown', e => {
-      // Ne pas déclencher si on clique sur une week-card existante
       if (e.target.closest('.week-card')) return;
       e.preventDefault();
-      // Efface la sélection au début du drag
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
-      // Cache le hover pendant le drag
       if (hoverEl) { hoverEl.style.display = 'none'; }
       const y       = getRelativeY(e, col);
       const startMin = yToMinutes(y, heureDebut, pxParHeure);
-      const endMin   = startMin + 60; // durée initiale 1h
+      const endMin   = startMin + 60;
       const el = document.createElement('div');
       el.className = 'drag-selection';
       col.appendChild(el);
@@ -480,7 +468,6 @@ function initDragCreate() {
       col.classList.add('dragging');
     });
 
-    // ── TOUCH ──
     col.addEventListener('touchstart', e => {
       if (e.target.closest('.week-card')) return;
       document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
@@ -496,7 +483,6 @@ function initDragCreate() {
     }, { passive: true });
   });
 
-  // ── MOUSE MOVE / UP (globaux pour sortir de la colonne) ──
   document.addEventListener('mousemove', e => {
     if (!dragState || dragState.fromTouch) return;
     const y      = getRelativeY(e, dragState.col);
@@ -511,7 +497,6 @@ function initDragCreate() {
     finalizeDrag();
   });
 
-  // ── TOUCH MOVE / END (globaux) ──
   document.addEventListener('touchmove', e => {
     if (!dragState || !dragState.fromTouch) return;
     const y      = getRelativeY(e, dragState.col);
@@ -533,7 +518,6 @@ function finalizeDrag() {
   el.remove();
   col.classList.remove('dragging');
   dragState = null;
-  // Ouvre la modale avec le créneau pré-rempli
   openNewSessionModal(date, minutesToTime(startMin), minutesToTime(endMin));
 }
 
@@ -541,14 +525,8 @@ function finalizeDrag() {
 //  MODALE NOUVELLE SÉANCE
 // ══════════════════════════════════════════════════════════
 
-let _slotLocked = false; // true quand date/heures viennent du drag
+let _slotLocked = false;
 
-/**
- * Ouvre la modale.
- * @param {string|null} date       ex: '2026-05-07'  (null = bouton normal)
- * @param {string|null} timeStart  ex: '09:00'
- * @param {string|null} timeEnd    ex: '10:00'
- */
 function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
   buildClassSelect();
   buildTimeSelects();
@@ -560,14 +538,12 @@ function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
   document.getElementById('nsPlan').disabled = true;
   document.getElementById('nsSubmitBtn').disabled = true;
 
-  // Préremplissage depuis le drag
   if (date && timeStart && timeEnd) {
     _slotLocked = true;
     document.getElementById('nsDate').value       = date;
     document.getElementById('nsTimeStart').value  = timeStart;
     filterEndTimes();
     document.getElementById('nsTimeEnd').value    = timeEnd;
-    // Bandeau récapitulatif
     const d    = new Date(date + 'T00:00:00');
     const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
     const dateStr = jours[d.getDay()] + ' ' +
@@ -582,7 +558,6 @@ function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
     document.getElementById('nsManualSlot').style.display = '';
   }
 
-  // Initialise la date de récurrence "jusqu'au" à dans 3 mois
   const until = new Date();
   until.setMonth(until.getMonth() + 3);
   document.getElementById('nsRecUntil').value = until.toISOString().slice(0, 10);
@@ -590,7 +565,6 @@ function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
   document.getElementById('newSessionModal').removeAttribute('hidden');
 }
 
-/** Déverrouille la saisie manuelle de la date/heure (bouton ✏️ dans le bandeau) */
 function nsUnlockSlot() {
   _slotLocked = false;
   document.getElementById('nsSlotBanner').setAttribute('hidden', '');
@@ -603,7 +577,6 @@ function closeNewSessionModal() {
   _slotLocked = false;
 }
 
-// ── Selects horaires ────────────────────────────────────────
 function buildTimeSelects() {
   const start = document.getElementById('nsTimeStart');
   const end   = document.getElementById('nsTimeEnd');
@@ -630,7 +603,6 @@ function filterEndTimes() {
   if (prev && prev > startVal) end.value = prev;
 }
 
-// ── Selects chaînés classe → salle → disposition ────────────
 function buildClassSelect() {
   const classes = [...new Map(PLANS.map(p => [p.class_id, p.class_name])).entries()];
   const sel = document.getElementById('nsClass');
@@ -700,7 +672,6 @@ function createSession(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
 
-  // Lecture de la récurrence
   const recType = fd.get('recurrence_type') || 'none';
   let recurrence = null;
   if (recType === 'count') {
@@ -731,7 +702,6 @@ function createSession(e) {
   }).then(r => r.json()).then(d => {
     if (d.ok) {
       if (d.ids && d.ids.length > 1) {
-        // Plusieurs séances créées : retour sur la liste
         closeNewSessionModal();
         location.reload();
       } else {
@@ -797,7 +767,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.open('/api/sessions/' + id + '/observations-export', '_blank');
   });
 
-  // Restaurer la vue semaine si l'URL contient ?view=week
   const params = new URLSearchParams(location.search);
   if (params.get('view') === 'week') setView('week');
 });
