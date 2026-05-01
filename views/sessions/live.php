@@ -49,6 +49,12 @@ ob_start();
     <strong><?= htmlspecialchars($session['class_name']) ?></strong>
     <span>&middot;</span>
     <span><?= htmlspecialchars($session['room_name']) ?></span>
+
+    <?php if (!empty($session['plan_name'])): ?>
+    <span>&middot;</span>
+    <span class="live-title-plan" title="Plan de salle"><?= htmlspecialchars($session['plan_name']) ?></span>
+    <?php endif; ?>
+
     <span>&middot;</span>
 
     <!-- Navigation précédente / suivante autour de la date -->
@@ -842,6 +848,13 @@ a.live-nav-btn::after {
 a.live-nav-btn:hover::after,
 a.live-nav-btn:focus-visible::after {
   opacity: 1;
+}
+
+/* ── Nom du plan (discret, italique) ── */
+.live-title-plan {
+  font-style: italic;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 
 /* ── Badge lecture seule ── */
