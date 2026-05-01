@@ -225,18 +225,18 @@ body {
 
 /* ── Modal ────────────────────────────────────────────────── */
 .modal-overlay {
-    display: none;
     position: fixed;
     inset: 0;
     z-index: 1000;
+    display: flex;
     align-items: center;
     justify-content: center;
     background: rgba(0, 0, 0, 0.75);
 }
-.modal-overlay.is-open {
-    display: flex;
-}
 
+.modal-overlay[hidden] {
+    display: none !important;
+}
 
 .modal {
   background: var(--surface-2); border-radius: var(--radius-xl);
