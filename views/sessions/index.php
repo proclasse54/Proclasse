@@ -350,6 +350,37 @@ const TIME_SLOTS = [
 ];
 
 // ══════════════════════════════════════════════════════════
+//  TOGGLE VUE LISTE / SEMAINE
+// ══════════════════════════════════════════════════════════
+
+let dragInitialized = false;
+
+function setView(view) {
+  const viewList = document.getElementById('viewList');
+  const viewWeek = document.getElementById('viewWeek');
+  const btnList  = document.getElementById('btnList');
+  const btnWeek  = document.getElementById('btnWeek');
+
+  if (view === 'week') {
+    viewList.setAttribute('hidden', '');
+    viewWeek.removeAttribute('hidden');
+    btnList.classList.remove('active');
+    btnWeek.classList.add('active');
+    // initDragCreate() appelé UNE SEULE FOIS une fois viewWeek visible,
+    // pour que getBoundingClientRect() retourne des valeurs correctes.
+    if (!dragInitialized) {
+      initDragCreate();
+      dragInitialized = true;
+    }
+  } else {
+    viewWeek.setAttribute('hidden', '');
+    viewList.removeAttribute('hidden');
+    btnWeek.classList.remove('active');
+    btnList.classList.add('active');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 //  DRAG-TO-CREATE SUR LE CALENDRIER
 // ══════════════════════════════════════════════════════════
 
@@ -765,8 +796,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const id = document.getElementById('deleteModal').dataset.sessionId;
     window.open('/api/sessions/' + id + '/observations-export', '_blank');
   });
-  // NB : initDragCreate() est désormais appelé par app.js via setView('week')
-  //      une fois que viewWeek est visible, pour que getBoundingClientRect() soit correct.
+
+  // Restaurer la vue semaine si l'URL contient ?view=week
+  const params = new URLSearchParams(location.search);
+  if (params.get('view') === 'week') setView('week');
 });
 
 // ── Import ICS ──────────────────────────────────────────────
