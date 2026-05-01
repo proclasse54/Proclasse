@@ -128,7 +128,7 @@ class SessionController
      *
      * Charge :
      *  - Les métadonnées de la séance (classe, salle, dimensions)
-     *  - La séance précédente et suivante du même plan (navigation)
+     *  - La séance précédente et suivante de la même classe (toutes salles confondues)
      *  - Le snapshot des places (session_seats) avec les élèves placés
      *  - Les tags d'observation disponibles
      *  - Les observations déjà enregistrées pour cette séance
@@ -161,7 +161,7 @@ class SessionController
             return;
         }
 
-        // ── Navigation précédente / suivante (restreint au même plan_id) ──
+        // ── Navigation précédente / suivante (même class_id, toutes salles) ──
         // "Précédente" = séance antérieure (date < ou même date avec heure <)
         $stmtPrev = $db->prepare("
             SELECT se.id, se.date, se.time_start,
@@ -170,7 +170,7 @@ class SessionController
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
             LEFT JOIN groups g ON g.id = sp.group_id
-            WHERE se.plan_id = ?
+            WHERE sp.class_id = ?
               AND (
                     se.date < ?
                     OR (se.date = ? AND (se.time_start IS NULL OR se.time_start < ?))
@@ -180,7 +180,7 @@ class SessionController
             LIMIT 1
         ");
         $stmtPrev->execute([
-            $session['plan_id'],
+            $session['raw_class_id'],
             $session['date'],
             $session['date'],
             $session['time_start'] ?? '99:99:99',
@@ -197,7 +197,7 @@ class SessionController
             JOIN seating_plans sp ON sp.id = se.plan_id
             JOIN classes c ON c.id = sp.class_id
             LEFT JOIN groups g ON g.id = sp.group_id
-            WHERE se.plan_id = ?
+            WHERE sp.class_id = ?
               AND (
                     se.date > ?
                     OR (se.date = ? AND se.time_start IS NOT NULL AND se.time_start > ?)
@@ -207,7 +207,7 @@ class SessionController
             LIMIT 1
         ");
         $stmtNext->execute([
-            $session['plan_id'],
+            $session['raw_class_id'],
             $session['date'],
             $session['date'],
             $session['time_start'] ?? '00:00:00',
