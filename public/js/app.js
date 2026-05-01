@@ -19,15 +19,14 @@ function closeModal(id) {
 // Fermer modale en cliquant sur l'overlay
 document.addEventListener('click', e => {
   if (e.target.classList.contains('modal-overlay')) {
-    e.target.hidden = true;
+    e.target.classList.remove('is-open');
   }
 });
 
 // Fermer avec Escape
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    document.querySelectorAll('.modal-overlay:not([hidden])').forEach(m => m.hidden = true);
-  }
+    document.querySelectorAll('.modal-overlay.is-open').forEach(m => m.classList.remove('is-open'));  }
 });
 
 

@@ -99,7 +99,7 @@
 </div>
 
 <!-- ── Modal import Pronote (coller) ────────────────────── -->
-<div class="modal-overlay" id="importModal" hidden>
+<div class="modal-overlay" id="importModal">
   <div class="modal modal-lg">
     <div class="modal-header">
       <h2>Importer depuis Pronote</h2>
@@ -134,7 +134,7 @@
 </div>
 
 <!-- ── Modal nouveau plan ─────────────────────────────── -->
-<div class="modal-overlay" id="newPlanModal" hidden>
+<div class="modal-overlay" id="newPlanModal">
   <div class="modal">
     <div class="modal-header">
       <h2>Nouveau plan de salle</h2>
@@ -185,7 +185,7 @@ function openImportModal() {
   document.getElementById('pronoteData').value = '';
   document.getElementById('importPreview').hidden = true;
   document.getElementById('importBtn').disabled = true;
-  document.getElementById('importModal').hidden = false;
+  document.getElementById('importModal').classList.add('is-open');
   setTimeout(() => document.getElementById('pronoteData').focus(), 100);
 }
 
@@ -232,7 +232,7 @@ function doImport() {
 }
 
 // ── Plans ──────────────────────────────────────────────
-function openNewPlanModal() { document.getElementById('newPlanModal').hidden = false; }
+function openNewPlanModal() { document.getElementById('newPlanModal').classList.add('is-open'); }
 
 function createPlan(e) {
   e.preventDefault();
