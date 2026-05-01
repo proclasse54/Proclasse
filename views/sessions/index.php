@@ -87,7 +87,6 @@
     $weekLabel = 'Semaine du '.(new \DateTime($weekStart))->format('d/m').' au '.(new \DateTime($weekEnd))->format('d/m/Y');
   ?>
 
-  <!-- Navigation semaine -->
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
     <a href="?view=week&week=<?= $prevWeek ?>" class="btn btn-sm">&larr; Semaine pr&eacute;c.</a>
     <strong><?= $weekLabel ?></strong>
@@ -106,7 +105,6 @@
     }
     $heureDebut = 8;
     $heureFin   = 18;
-
     foreach ($weekSessions as $_ws) {
         if ($_ws['time_start']) {
             $h = (int)substr($_ws['time_start'], 0, 2);
@@ -119,16 +117,12 @@
             if ($hFin > $heureFin) $heureFin = $hFin;
         }
     }
-
     $pxParHeure   = 64;
     $hauteurTotal = ($heureFin - $heureDebut) * $pxParHeure;
     $currentWeekSlug = $weekDate->format('o-\\WW');
   ?>
 
-  <!-- Agenda : axe horaire + grille 5 jours -->
   <div class="week-agenda">
-
-    <!-- Colonne axe horaire -->
     <div class="week-axis">
       <div class="week-axis-header"></div>
       <div class="week-axis-body" style="height:<?= $hauteurTotal ?>px;">
@@ -139,8 +133,6 @@
         <?php endfor ?>
       </div>
     </div>
-
-    <!-- Grille 5 jours -->
     <div class="week-grid">
       <?php foreach ($dates as $i => $d): ?>
       <div class="week-col">
@@ -149,8 +141,7 @@
           <small><?= (new \DateTime($d))->format('d/m') ?></small>
         </div>
         <div class="week-col-body" style="height:<?= $hauteurTotal ?>px;">
-          <?php if (empty($byDate[$d])): ?>
-          <?php else: ?>
+          <?php if (!empty($byDate[$d])): ?>
             <?php foreach ($byDate[$d] as $ws):
               if (!$ws['time_start'] || !$ws['time_end']) continue;
               [$h,  $m ] = array_map('intval', explode(':', substr($ws['time_start'], 0, 5)));
@@ -177,22 +168,17 @@
       </div>
       <?php endforeach ?>
     </div>
-
-  </div><!-- .week-agenda -->
+  </div>
 </div>
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
 <div id="newSessionModal" class="modal-overlay" hidden>
   <div class="modal-box" style="width:min(560px,95vw);">
-
     <div class="modal-header">
       <h2>Nouvelle séance</h2>
       <button class="modal-close" onclick="closeNewSessionModal()" aria-label="Fermer">&times;</button>
     </div>
-
     <form id="newSessionForm" onsubmit="createSession(event)" style="display:flex;flex-direction:column;gap:var(--space-5);">
-
-      <!-- Ligne date + matière -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
         <div class="form-group">
           <label class="form-label" for="nsDate">Date</label>
@@ -203,8 +189,6 @@
           <input class="form-input" type="text" id="nsSubject" name="subject" placeholder="ex : Mathématiques">
         </div>
       </div>
-
-      <!-- Ligne heures -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
         <div class="form-group">
           <label class="form-label" for="nsTimeStart">Heure de début</label>
@@ -215,41 +199,31 @@
           <select class="form-input" id="nsTimeEnd" name="time_end"></select>
         </div>
       </div>
-
-      <!-- Ligne classe -->
       <div class="form-group">
         <label class="form-label" for="nsClass">Classe</label>
         <select class="form-input" id="nsClass" required>
           <option value="">— Choisir une classe —</option>
         </select>
       </div>
-
-      <!-- Ligne salle -->
       <div class="form-group">
         <label class="form-label" for="nsRoom">Salle</label>
         <select class="form-input" id="nsRoom" disabled required>
           <option value="">— Choisir d'abord une classe —</option>
         </select>
       </div>
-
-      <!-- Ligne disposition -->
       <div class="form-group">
         <label class="form-label" for="nsPlan">Disposition</label>
         <select class="form-input" id="nsPlan" name="plan_id" disabled required>
           <option value="">— Choisir d'abord une salle —</option>
         </select>
         <?php if (empty($plans)): ?>
-          <p style="margin-top:var(--space-2);color:var(--danger);font-size:var(--text-sm);">
-            &#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.
-          </p>
+          <p style="margin-top:var(--space-2);color:var(--danger);font-size:var(--text-sm);">&#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.</p>
         <?php endif ?>
       </div>
-
       <div style="display:flex;gap:var(--space-3);justify-content:flex-end;padding-top:var(--space-2);border-top:1px solid var(--divider);">
         <button type="button" onclick="closeNewSessionModal()" class="btn">Annuler</button>
         <button type="submit" class="btn btn-primary" id="nsSubmitBtn" disabled>Démarrer la séance</button>
       </div>
-
     </form>
   </div>
 </div>
@@ -271,7 +245,6 @@
 // ── Données plans injectées depuis PHP ──────────────────────
 const PLANS = <?= json_encode(array_values($plans), JSON_HEX_TAG) ?>;
 
-// Créneaux horaires fixes (adapter si besoin)
 const TIME_SLOTS = [
   '07:00','07:30','08:00','08:30','09:00','09:30',
   '10:00','10:30','11:00','11:30','12:00','12:30',
@@ -280,11 +253,114 @@ const TIME_SLOTS = [
   '19:00'
 ];
 
-// ── Helpers modales ─────────────────────────────────────────
+// ── Ouverture / fermeture modale nouvelle séance ────────────
 function openNewSessionModal() {
-    document.getElementById('newSessionModal').classList.add('is-open');
+  buildClassSelect();
+  buildTimeSelects();
+  document.getElementById('nsClass').value = '';
+  document.getElementById('nsRoom').value  = '';
+  document.getElementById('nsRoom').disabled = true;
+  document.getElementById('nsPlan').value  = '';
+  document.getElementById('nsPlan').disabled = true;
+  document.getElementById('nsSubmitBtn').disabled = true;
+  document.getElementById('newSessionModal').removeAttribute('hidden');
 }
 
+function closeNewSessionModal() {
+  document.getElementById('newSessionModal').setAttribute('hidden', '');
+  document.getElementById('newSessionForm').reset();
+}
+
+// ── Selects horaires ────────────────────────────────────────
+function buildTimeSelects() {
+  const start = document.getElementById('nsTimeStart');
+  const end   = document.getElementById('nsTimeEnd');
+  start.innerHTML = '<option value="">— Début —</option>';
+  end.innerHTML   = '<option value="">— Fin —</option>';
+  TIME_SLOTS.forEach(t => {
+    start.innerHTML += `<option value="${t}">${t}</option>`;
+    end.innerHTML   += `<option value="${t}">${t}</option>`;
+  });
+  start.value = '08:00';
+  filterEndTimes();
+  document.getElementById('nsTimeEnd').value = '09:00';
+  start.addEventListener('change', filterEndTimes);
+}
+
+function filterEndTimes() {
+  const startVal = document.getElementById('nsTimeStart').value;
+  const end = document.getElementById('nsTimeEnd');
+  const prev = end.value;
+  end.innerHTML = '<option value="">— Fin —</option>';
+  TIME_SLOTS.filter(t => t > startVal).forEach(t => {
+    end.innerHTML += `<option value="${t}">${t}</option>`;
+  });
+  if (prev && prev > startVal) end.value = prev;
+}
+
+// ── Selects chaînés classe → salle → disposition ────────────
+function buildClassSelect() {
+  const classes = [...new Map(PLANS.map(p => [p.class_id, p.class_name])).entries()];
+  const sel = document.getElementById('nsClass');
+  sel.innerHTML = '<option value="">— Choisir une classe —</option>';
+  classes.sort((a,b) => a[1].localeCompare(b[1]))
+         .forEach(([id, name]) => {
+    sel.innerHTML += `<option value="${id}">${name}</option>`;
+  });
+}
+
+document.getElementById('nsClass').addEventListener('change', function() {
+  const classId = parseInt(this.value);
+  const roomSel = document.getElementById('nsRoom');
+  const planSel = document.getElementById('nsPlan');
+  planSel.innerHTML = '<option value="">— Choisir d\'abord une salle —</option>';
+  planSel.disabled = true;
+  document.getElementById('nsSubmitBtn').disabled = true;
+  if (!classId) {
+    roomSel.innerHTML = '<option value="">— Choisir d\'abord une classe —</option>';
+    roomSel.disabled = true;
+    return;
+  }
+  const rooms = [...new Map(
+    PLANS.filter(p => p.class_id == classId)
+         .map(p => [p.room_id, p.room_name])
+  ).entries()];
+  roomSel.innerHTML = '<option value="">— Choisir une salle —</option>';
+  rooms.sort((a,b) => a[1].localeCompare(b[1]))
+       .forEach(([id, name]) => {
+    roomSel.innerHTML += `<option value="${id}">${name}</option>`;
+  });
+  roomSel.disabled = false;
+});
+
+document.getElementById('nsRoom').addEventListener('change', function() {
+  const classId = parseInt(document.getElementById('nsClass').value);
+  const roomId  = parseInt(this.value);
+  const planSel = document.getElementById('nsPlan');
+  document.getElementById('nsSubmitBtn').disabled = true;
+  if (!roomId) {
+    planSel.innerHTML = '<option value="">— Choisir d\'abord une salle —</option>';
+    planSel.disabled = true;
+    return;
+  }
+  const plans = PLANS.filter(p => p.class_id == classId && p.room_id == roomId);
+  planSel.innerHTML = '<option value="">— Choisir une disposition —</option>';
+  plans.sort((a,b) => a.name.localeCompare(b.name))
+       .forEach(p => {
+    planSel.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+  });
+  if (plans.length === 1) {
+    planSel.value = plans[0].id;
+    document.getElementById('nsSubmitBtn').disabled = false;
+  }
+  planSel.disabled = false;
+});
+
+document.getElementById('nsPlan').addEventListener('change', function() {
+  document.getElementById('nsSubmitBtn').disabled = !this.value;
+});
+
+// ── Création séance ─────────────────────────────────────────
 function createSession(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -308,33 +384,27 @@ function createSession(e) {
 async function deleteSession(id) {
   const summary = await fetch('/api/sessions/' + id + '/observations-summary')
                         .then(r => r.json());
-
   if (summary.count === 0) {
     if (!confirm('Supprimer cette séance ? (aucune observation enregistrée)')) return;
     await doDeleteSession(id);
     return;
   }
-
   const byStudent = {};
   summary.rows.forEach(r => {
     const key = r.last_name + ' ' + r.first_name;
     if (!byStudent[key]) byStudent[key] = [];
     byStudent[key].push((r.icon ?? '') + ' ' + r.tag);
   });
-
-  let html = `<p style="margin-bottom:.75rem">
-    <strong>${summary.count} observation(s)</strong> seront définitivement supprimées&nbsp;:
-  </p><ul style="margin:.5rem 0 1rem 1.25rem;line-height:2">`;
+  let html = `<p style="margin-bottom:.75rem"><strong>${summary.count} observation(s)</strong> seront définitivement supprimées&nbsp;:</p>
+    <ul style="margin:.5rem 0 1rem 1.25rem;line-height:2">`;
   for (const [student, tags] of Object.entries(byStudent)) {
     html += `<li><strong>${student}</strong>&nbsp;: ${tags.join(', ')}</li>`;
   }
   html += `</ul>`;
-
-    // 3. Afficher la modale
-    document.getElementById('deleteModalBody').innerHTML = html;
-    const modal = document.getElementById('deleteModal');
-    modal.dataset.sessionId = id;
-    modal.classList.add('is-open');
+  document.getElementById('deleteModalBody').innerHTML = html;
+  const modal = document.getElementById('deleteModal');
+  modal.dataset.sessionId = id;
+  modal.removeAttribute('hidden');
 }
 
 async function doDeleteSession(id) {
@@ -345,17 +415,14 @@ async function doDeleteSession(id) {
 
 // ── Boutons modale suppression ──────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-
-    document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
-        const id = document.getElementById('deleteModal').dataset.sessionId;
-        document.getElementById('deleteModal').classList.remove('is-open');
-        await doDeleteSession(id);
-    });
-
-    document.getElementById('btnDeleteCancel').addEventListener('click', () => {
-        document.getElementById('deleteModal').classList.remove('is-open');
-    });
-
+  document.getElementById('btnDeleteConfirm').addEventListener('click', async () => {
+    const id = document.getElementById('deleteModal').dataset.sessionId;
+    document.getElementById('deleteModal').setAttribute('hidden', '');
+    await doDeleteSession(id);
+  });
+  document.getElementById('btnDeleteCancel').addEventListener('click', () => {
+    document.getElementById('deleteModal').setAttribute('hidden', '');
+  });
   document.getElementById('btnDeleteSave').addEventListener('click', () => {
     const id = document.getElementById('deleteModal').dataset.sessionId;
     window.open('/api/sessions/' + id + '/observations-export', '_blank');
@@ -372,11 +439,7 @@ document.getElementById('icsForm').addEventListener('submit', async function(e) 
   }).then(r => r.json());
   const el = document.getElementById('icsResult');
   if (data.ok) {
-    let html = `<span style="color:var(--color-success,green)">
-      ✅ ${data.inserted} séance(s) créée(s)
-      ${data.plans_created ? ` &middot; ${data.plans_created} plan(s) généré(s)` : ''}
-      &middot; ${data.skipped} ignorée(s) (doublons)
-    </span>`;
+    let html = `<span style="color:var(--color-success,green)">✅ ${data.inserted} séance(s) créée(s)${data.plans_created ? ` &middot; ${data.plans_created} plan(s) généré(s)` : ''} &middot; ${data.skipped} ignorée(s) (doublons)</span>`;
     if (data.errors?.length) {
       html += '<br><details><summary>&#9888;&#65039; ' + data.errors.length + ' avertissement(s)</summary>'
             + data.errors.map(e => `<div>&bull; ${e}</div>`).join('') + '</details>';
