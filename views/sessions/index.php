@@ -122,6 +122,11 @@
     $currentWeekSlug = $weekDate->format('o-\\WW');
   ?>
 
+  <!-- Légende drag -->
+  <p style="font-size:var(--text-sm);color:var(--color-text-muted);margin-bottom:.5rem;">
+    💡 Cliquez (ou glissez) sur un créneau vide pour créer une séance.
+  </p>
+
   <div class="week-agenda">
     <div class="week-axis">
       <div class="week-axis-header"></div>
@@ -140,7 +145,11 @@
           <?= $jours[$i] ?>
           <small><?= (new \DateTime($d))->format('d/m') ?></small>
         </div>
-        <div class="week-col-body" style="height:<?= $hauteurTotal ?>px;">
+        <!-- data-date pour le JS de drag -->
+        <div class="week-col-body" style="height:<?= $hauteurTotal ?>px;"
+             data-date="<?= $d ?>"
+             data-heure-debut="<?= $heureDebut ?>"
+             data-px-par-heure="<?= $pxParHeure ?>">
           <?php if (!empty($byDate[$d])): ?>
             <?php foreach ($byDate[$d] as $ws):
               if (!$ws['time_start'] || !$ws['time_end']) continue;
@@ -158,12 +167,14 @@
                 <div class="week-card-room" style="font-size:var(--text-xs);white-space:nowrap;"><?= htmlspecialchars($ws['room_name']) ?></div>
                 <?php endif ?>
               </div>
-              <?php if ($ws['subject']): ?>
+              <?php if (!empty($ws['subject'])): ?>
               <div class="week-card-subject"><?= htmlspecialchars($ws['subject']) ?></div>
               <?php endif ?>
             </div>
             <?php endforeach ?>
           <?php endif ?>
+
+          <!-- Élément de sélection drag (injecté via JS) -->
         </div>
       </div>
       <?php endforeach ?>
@@ -173,38 +184,57 @@
 
 <!-- ═══ MODAL NOUVELLE SÉANCE ═══ -->
 <div id="newSessionModal" class="modal-overlay" hidden>
-  <div class="modal-box" style="width:min(560px,95vw);">
+  <div class="modal-box" style="width:min(580px,95vw);">
     <div class="modal-header">
       <h2>Nouvelle séance</h2>
       <button class="modal-close" onclick="closeNewSessionModal()" aria-label="Fermer">&times;</button>
     </div>
+
+    <!-- Bandeau récapitulatif créneau (affiché uniquement si prérempli depuis le calendrier) -->
+    <div id="nsSlotBanner" hidden
+         style="display:flex;align-items:center;gap:.5rem;background:var(--color-primary-highlight,#e8f4f4);border-radius:var(--radius-md);padding:.5rem .75rem;margin-bottom:var(--space-4);font-size:var(--text-sm);">
+      <span style="font-size:1.1em;">📅</span>
+      <span id="nsSlotLabel" style="font-weight:600;"></span>
+      <button type="button" onclick="nsUnlockSlot()"
+              style="margin-left:auto;font-size:var(--text-xs);color:var(--color-text-muted);background:none;border:none;cursor:pointer;"
+              title="Modifier manuellement">✏️ Modifier</button>
+    </div>
+
     <form id="newSessionForm" onsubmit="createSession(event)" style="display:flex;flex-direction:column;gap:var(--space-5);">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
-        <div class="form-group">
-          <label class="form-label" for="nsDate">Date</label>
-          <input class="form-input" type="date" id="nsDate" name="date" required value="<?= date('Y-m-d') ?>">
+
+      <!-- Date + Matière (masqués quand créneau prérempli depuis le calendrier) -->
+      <div id="nsManualSlot" style="display:flex;flex-direction:column;gap:var(--space-4);">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
+          <div class="form-group">
+            <label class="form-label" for="nsDate">Date</label>
+            <input class="form-input" type="date" id="nsDate" name="date" required value="<?= date('Y-m-d') ?>">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nsSubject">Matière <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
+            <input class="form-input" type="text" id="nsSubject" name="subject" placeholder="ex : Mathématiques">
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="nsSubject">Matière <span style="font-weight:400;color:var(--text-muted)">(optionnel)</span></label>
-          <input class="form-input" type="text" id="nsSubject" name="subject" placeholder="ex : Mathématiques">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
+          <div class="form-group">
+            <label class="form-label" for="nsTimeStart">Heure de début</label>
+            <select class="form-input" id="nsTimeStart" name="time_start"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nsTimeEnd">Heure de fin</label>
+            <select class="form-input" id="nsTimeEnd" name="time_end"></select>
+          </div>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);">
-        <div class="form-group">
-          <label class="form-label" for="nsTimeStart">Heure de début</label>
-          <select class="form-input" id="nsTimeStart" name="time_start"></select>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="nsTimeEnd">Heure de fin</label>
-          <select class="form-input" id="nsTimeEnd" name="time_end"></select>
-        </div>
-      </div>
+
+      <!-- 1. Classe -->
       <div class="form-group">
-        <label class="form-label" for="nsClass">Classe</label>
+        <label class="form-label" for="nsClass">1. Classe</label>
         <select class="form-input" id="nsClass" required>
           <option value="">— Choisir une classe —</option>
         </select>
       </div>
+
+      <!-- 2. Plan associé (chaîné via salle) -->
       <div class="form-group">
         <label class="form-label" for="nsRoom">Salle</label>
         <select class="form-input" id="nsRoom" disabled required>
@@ -212,7 +242,7 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label" for="nsPlan">Disposition</label>
+        <label class="form-label" for="nsPlan">2. Disposition</label>
         <select class="form-input" id="nsPlan" name="plan_id" disabled required>
           <option value="">— Choisir d'abord une salle —</option>
         </select>
@@ -220,9 +250,33 @@
           <p style="margin-top:var(--space-2);color:var(--danger);font-size:var(--text-sm);">&#9888;&#65039; Aucun plan configuré. Créez d'abord une salle, une classe, et assignez-les.</p>
         <?php endif ?>
       </div>
+
+      <!-- 3. Récurrence -->
+      <div class="form-group">
+        <label class="form-label">3. Récurrence</label>
+        <div style="display:flex;flex-direction:column;gap:var(--space-2);">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+            <input type="radio" name="recurrence_type" value="none" checked> Une seule séance
+          </label>
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+            <input type="radio" name="recurrence_type" value="count"> Répéter
+            <input type="number" id="nsRecCount" min="2" max="52" value="10"
+                   style="width:4rem;" class="form-input"
+                   onclick="document.querySelector('[name=recurrence_type][value=count]').checked=true">
+            fois (toutes les semaines)
+          </label>
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+            <input type="radio" name="recurrence_type" value="until"> Jusqu'au
+            <input type="date" id="nsRecUntil" class="form-input"
+                   style="width:auto;"
+                   onclick="document.querySelector('[name=recurrence_type][value=until]').checked=true">
+          </label>
+        </div>
+      </div>
+
       <div style="display:flex;gap:var(--space-3);justify-content:flex-end;padding-top:var(--space-2);border-top:1px solid var(--divider);">
         <button type="button" onclick="closeNewSessionModal()" class="btn">Annuler</button>
-        <button type="submit" class="btn btn-primary" id="nsSubmitBtn" disabled>Démarrer la séance</button>
+        <button type="submit" class="btn btn-primary" id="nsSubmitBtn" disabled>Créer la séance</button>
       </div>
     </form>
   </div>
@@ -241,6 +295,29 @@
   </div>
 </div>
 
+<style>
+/* ── Sélection drag sur le calendrier ── */
+.drag-selection {
+  position: absolute;
+  left: 2px; right: 2px;
+  background: color-mix(in oklch, var(--color-primary) 25%, transparent);
+  border: 2px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 10;
+  transition: none;
+}
+.week-col-body {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Curseur crayon sur les zones vides du calendrier */
+.week-col-body:not(.dragging) {
+  cursor: cell;
+}
+</style>
+
 <script>
 // ── Données plans injectées depuis PHP ──────────────────────
 const PLANS = <?= json_encode(array_values($plans), JSON_HEX_TAG) ?>;
@@ -253,22 +330,183 @@ const TIME_SLOTS = [
   '19:00'
 ];
 
-// ── Ouverture / fermeture modale nouvelle séance ────────────
-function openNewSessionModal() {
+// ══════════════════════════════════════════════════════════
+//  DRAG-TO-CREATE SUR LE CALENDRIER
+// ══════════════════════════════════════════════════════════
+
+let dragState = null; // { col, date, heureDebut, pxParHeure, startMin, endMin, el }
+
+/**
+ * Convertit une position Y (px dans le col-body) en minutes depuis minuit,
+ * snappée aux tranches de 30 minutes.
+ */
+function yToMinutes(y, heureDebut, pxParHeure) {
+  const raw = (y / pxParHeure) * 60 + heureDebut * 60;
+  return Math.round(raw / 30) * 30;
+}
+
+function minutesToTime(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+function getRelativeY(e, col) {
+  const rect = col.getBoundingClientRect();
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return Math.max(0, Math.min(clientY - rect.top, col.clientHeight));
+}
+
+function updateDragEl(el, startMin, endMin, heureDebut, pxParHeure) {
+  const top    = ((startMin / 60) - heureDebut) * pxParHeure;
+  const height = ((endMin - startMin) / 60) * pxParHeure;
+  el.style.top    = Math.round(top) + 'px';
+  el.style.height = Math.max(height, 16) + 'px';
+  el.textContent  = minutesToTime(startMin) + ' – ' + minutesToTime(endMin);
+}
+
+function initDragCreate() {
+  document.querySelectorAll('.week-col-body').forEach(col => {
+    const heureDebut  = parseInt(col.dataset.heureDebut);
+    const pxParHeure  = parseInt(col.dataset.pxParHeure);
+    const date        = col.dataset.date;
+
+    // ── MOUSE ──
+    col.addEventListener('mousedown', e => {
+      // Ne pas déclencher si on clique sur une week-card existante
+      if (e.target.closest('.week-card')) return;
+      e.preventDefault();
+      const y       = getRelativeY(e, col);
+      const startMin = yToMinutes(y, heureDebut, pxParHeure);
+      const endMin   = startMin + 60; // durée initiale 1h
+      const el = document.createElement('div');
+      el.className = 'drag-selection';
+      col.appendChild(el);
+      updateDragEl(el, startMin, endMin, heureDebut, pxParHeure);
+      dragState = { col, date, heureDebut, pxParHeure, startMin, endMin, el, fromTouch: false };
+      col.classList.add('dragging');
+    });
+
+    // ── TOUCH ──
+    col.addEventListener('touchstart', e => {
+      if (e.target.closest('.week-card')) return;
+      const y        = getRelativeY(e, col);
+      const startMin = yToMinutes(y, heureDebut, pxParHeure);
+      const endMin   = startMin + 60;
+      const el = document.createElement('div');
+      el.className = 'drag-selection';
+      col.appendChild(el);
+      updateDragEl(el, startMin, endMin, heureDebut, pxParHeure);
+      dragState = { col, date, heureDebut, pxParHeure, startMin, endMin, el, fromTouch: true };
+      col.classList.add('dragging');
+    }, { passive: true });
+  });
+
+  // ── MOUSE MOVE / UP (globaux pour sortir de la colonne) ──
+  document.addEventListener('mousemove', e => {
+    if (!dragState || dragState.fromTouch) return;
+    const y      = getRelativeY(e, dragState.col);
+    const curMin = yToMinutes(y, dragState.heureDebut, dragState.pxParHeure);
+    dragState.endMin = Math.max(curMin, dragState.startMin + 30);
+    updateDragEl(dragState.el, dragState.startMin, dragState.endMin,
+                 dragState.heureDebut, dragState.pxParHeure);
+  });
+
+  document.addEventListener('mouseup', e => {
+    if (!dragState || dragState.fromTouch) return;
+    finalizeDrag();
+  });
+
+  // ── TOUCH MOVE / END (globaux) ──
+  document.addEventListener('touchmove', e => {
+    if (!dragState || !dragState.fromTouch) return;
+    const y      = getRelativeY(e, dragState.col);
+    const curMin = yToMinutes(y, dragState.heureDebut, dragState.pxParHeure);
+    dragState.endMin = Math.max(curMin, dragState.startMin + 30);
+    updateDragEl(dragState.el, dragState.startMin, dragState.endMin,
+                 dragState.heureDebut, dragState.pxParHeure);
+  }, { passive: true });
+
+  document.addEventListener('touchend', e => {
+    if (!dragState || !dragState.fromTouch) return;
+    finalizeDrag();
+  });
+}
+
+function finalizeDrag() {
+  if (!dragState) return;
+  const { col, date, startMin, endMin, el } = dragState;
+  el.remove();
+  col.classList.remove('dragging');
+  dragState = null;
+  // Ouvre la modale avec le créneau pré-rempli
+  openNewSessionModal(date, minutesToTime(startMin), minutesToTime(endMin));
+}
+
+// ══════════════════════════════════════════════════════════
+//  MODALE NOUVELLE SÉANCE
+// ══════════════════════════════════════════════════════════
+
+let _slotLocked = false; // true quand date/heures viennent du drag
+
+/**
+ * Ouvre la modale.
+ * @param {string|null} date       ex: '2026-05-07'  (null = bouton normal)
+ * @param {string|null} timeStart  ex: '09:00'
+ * @param {string|null} timeEnd    ex: '10:00'
+ */
+function openNewSessionModal(date = null, timeStart = null, timeEnd = null) {
   buildClassSelect();
   buildTimeSelects();
-  document.getElementById('nsClass').value = '';
-  document.getElementById('nsRoom').value  = '';
+
+  document.getElementById('nsClass').value  = '';
+  document.getElementById('nsRoom').value   = '';
   document.getElementById('nsRoom').disabled = true;
-  document.getElementById('nsPlan').value  = '';
+  document.getElementById('nsPlan').value   = '';
   document.getElementById('nsPlan').disabled = true;
   document.getElementById('nsSubmitBtn').disabled = true;
+
+  // Préremplissage depuis le drag
+  if (date && timeStart && timeEnd) {
+    _slotLocked = true;
+    document.getElementById('nsDate').value       = date;
+    document.getElementById('nsTimeStart').value  = timeStart;
+    filterEndTimes();
+    document.getElementById('nsTimeEnd').value    = timeEnd;
+    // Bandeau récapitulatif
+    const d    = new Date(date + 'T00:00:00');
+    const jours = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    const dateStr = jours[d.getDay()] + ' ' +
+                    String(d.getDate()).padStart(2, '0') + '/' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+    document.getElementById('nsSlotLabel').textContent = dateStr + '  ·  ' + timeStart + ' → ' + timeEnd;
+    document.getElementById('nsSlotBanner').removeAttribute('hidden');
+    document.getElementById('nsManualSlot').style.display = 'none';
+  } else {
+    _slotLocked = false;
+    document.getElementById('nsSlotBanner').setAttribute('hidden', '');
+    document.getElementById('nsManualSlot').style.display = '';
+  }
+
+  // Initialise la date de récurrence "jusqu'au" à dans 3 mois
+  const until = new Date();
+  until.setMonth(until.getMonth() + 3);
+  document.getElementById('nsRecUntil').value = until.toISOString().slice(0, 10);
+
   document.getElementById('newSessionModal').removeAttribute('hidden');
+}
+
+/** Déverrouille la saisie manuelle de la date/heure (bouton ✏️ dans le bandeau) */
+function nsUnlockSlot() {
+  _slotLocked = false;
+  document.getElementById('nsSlotBanner').setAttribute('hidden', '');
+  document.getElementById('nsManualSlot').style.display = '';
 }
 
 function closeNewSessionModal() {
   document.getElementById('newSessionModal').setAttribute('hidden', '');
   document.getElementById('newSessionForm').reset();
+  _slotLocked = false;
 }
 
 // ── Selects horaires ────────────────────────────────────────
@@ -360,23 +598,60 @@ document.getElementById('nsPlan').addEventListener('change', function() {
   document.getElementById('nsSubmitBtn').disabled = !this.value;
 });
 
-// ── Création séance ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════
+//  CRÉATION SÉANCE (avec récurrence)
+// ══════════════════════════════════════════════════════════
+
 function createSession(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
+
+  // Lecture de la récurrence
+  const recType = fd.get('recurrence_type') || 'none';
+  let recurrence = null;
+  if (recType === 'count') {
+    const count = parseInt(document.getElementById('nsRecCount').value) || 1;
+    recurrence = { type: 'count', count };
+  } else if (recType === 'until') {
+    const until = document.getElementById('nsRecUntil').value;
+    if (until) recurrence = { type: 'until', until };
+  }
+
+  const payload = {
+    plan_id:    parseInt(fd.get('plan_id'), 10),
+    date:       fd.get('date'),
+    time_start: fd.get('time_start') || null,
+    time_end:   fd.get('time_end')   || null,
+    subject:    fd.get('subject')    || null,
+    recurrence,
+  };
+
+  const btn = document.getElementById('nsSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Création…';
+
   fetch('/api/sessions', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({
-      plan_id:    parseInt(fd.get('plan_id'), 10),
-      date:       fd.get('date'),
-      time_start: fd.get('time_start') || null,
-      time_end:   fd.get('time_end')   || null,
-      subject:    fd.get('subject')    || null,
-    }),
+    body: JSON.stringify(payload),
   }).then(r => r.json()).then(d => {
-    if (d.ok) window.location = '/sessions/' + d.id + '/live';
-    else alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+    if (d.ok) {
+      if (d.ids && d.ids.length > 1) {
+        // Plusieurs séances créées : retour sur la liste
+        closeNewSessionModal();
+        location.reload();
+      } else {
+        window.location = '/sessions/' + (d.id ?? d.ids[0]) + '/live';
+      }
+    } else {
+      alert('Erreur : ' + (d.error ?? JSON.stringify(d)));
+      btn.disabled = false;
+      btn.textContent = 'Créer la séance';
+    }
+  }).catch(() => {
+    alert('Erreur réseau.');
+    btn.disabled = false;
+    btn.textContent = 'Créer la séance';
   });
 }
 
@@ -427,6 +702,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const id = document.getElementById('deleteModal').dataset.sessionId;
     window.open('/api/sessions/' + id + '/observations-export', '_blank');
   });
+
+  // Init drag-to-create (seulement si la vue semaine est rendue)
+  initDragCreate();
 });
 
 // ── Import ICS ──────────────────────────────────────────────
