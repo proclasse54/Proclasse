@@ -316,6 +316,25 @@
 .week-col-body:not(.dragging) {
   cursor: cell;
 }
+/* ── Hover highlight sur les cases vides ── */
+.week-hover-bar {
+  position: absolute;
+  left: 2px; right: 2px;
+  background: color-mix(in oklch, var(--color-text) 8%, transparent);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 5;
+}
+/* ── Case cliquée / sélectionnée ── */
+.week-selected-bar {
+  position: absolute;
+  left: 2px; right: 2px;
+  background: color-mix(in oklch, var(--color-primary) 18%, transparent);
+  border: 1.5px solid color-mix(in oklch, var(--color-primary) 55%, transparent);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
+  z-index: 6;
+}
 </style>
 
 <script>
@@ -371,11 +390,54 @@ function initDragCreate() {
     const pxParHeure  = parseInt(col.dataset.pxParHeure);
     const date        = col.dataset.date;
 
+    // ── HOVER : barre grisée sous le curseur ──
+    let hoverEl = null;
+    col.addEventListener('mouseenter', () => {
+      if (dragState) return;
+      hoverEl = document.createElement('div');
+      hoverEl.className = 'week-hover-bar';
+      hoverEl.style.height = (pxParHeure / 2) + 'px';
+      col.appendChild(hoverEl);
+    });
+    col.addEventListener('mousemove', e => {
+      if (!hoverEl || dragState) return;
+      if (e.target.closest('.week-card')) {
+        hoverEl.style.display = 'none';
+        return;
+      }
+      hoverEl.style.display = '';
+      const y = getRelativeY(e, col);
+      const snapMin = Math.round((y / pxParHeure * 60) / 30) * 30;
+      const top = ((snapMin / 60) - heureDebut) * pxParHeure;
+      hoverEl.style.top = Math.round(top) + 'px';
+    });
+    col.addEventListener('mouseleave', () => {
+      if (hoverEl) { hoverEl.remove(); hoverEl = null; }
+    });
+
+    // ── CLICK : sélection visuelle persistante ──
+    col.addEventListener('click', e => {
+      if (e.target.closest('.week-card') || dragState) return;
+      document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
+      const y = getRelativeY(e, col);
+      const snapMin = Math.round((y / pxParHeure * 60) / 30) * 30;
+      const top = ((snapMin / 60) - heureDebut) * pxParHeure;
+      const sel = document.createElement('div');
+      sel.className = 'week-selected-bar';
+      sel.style.top    = Math.round(top) + 'px';
+      sel.style.height = (pxParHeure / 2) + 'px';
+      col.appendChild(sel);
+    });
+
     // ── MOUSE ──
     col.addEventListener('mousedown', e => {
       // Ne pas déclencher si on clique sur une week-card existante
       if (e.target.closest('.week-card')) return;
       e.preventDefault();
+      // Efface la sélection au début du drag
+      document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
+      // Cache le hover pendant le drag
+      if (hoverEl) { hoverEl.style.display = 'none'; }
       const y       = getRelativeY(e, col);
       const startMin = yToMinutes(y, heureDebut, pxParHeure);
       const endMin   = startMin + 60; // durée initiale 1h
@@ -390,6 +452,7 @@ function initDragCreate() {
     // ── TOUCH ──
     col.addEventListener('touchstart', e => {
       if (e.target.closest('.week-card')) return;
+      document.querySelectorAll('.week-selected-bar').forEach(el => el.remove());
       const y        = getRelativeY(e, col);
       const startMin = yToMinutes(y, heureDebut, pxParHeure);
       const endMin   = startMin + 60;
