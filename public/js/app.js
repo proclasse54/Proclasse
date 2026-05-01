@@ -32,6 +32,8 @@ document.addEventListener('keydown', e => {
 
 
 //  toggle vue séances + persistance dans l'URL
+let _dragCreateInited = false;
+
 function setView(v) {
     const viewList = document.getElementById('viewList');
     const viewWeek = document.getElementById('viewWeek');
@@ -45,6 +47,13 @@ function setView(v) {
     const url = new URL(location.href);
     url.searchParams.set('view', v);
     history.replaceState(null, '', url);
+
+    // initDragCreate() doit être appelé APRÈS que viewWeek soit visible,
+    // sinon getBoundingClientRect() retourne 0 sur les éléments cachés.
+    if (v === 'week' && !_dragCreateInited && typeof initDragCreate === 'function') {
+        _dragCreateInited = true;
+        initDragCreate();
+    }
 }
 setView(new URLSearchParams(location.search).get('view') || 'week');
 
