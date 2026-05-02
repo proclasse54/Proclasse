@@ -104,6 +104,66 @@ class StudentController
         Response::json(['ok' => true]);
     }
 
+    /**
+     * apiSaveCrop : reçoit une image recadrée en base64 (data URI),
+     * la décode et l'enregistre en JPEG à la place de la photo existante.
+     *
+     * Body JSON attendu : { "dataUrl": "data:image/jpeg;base64,..." }
+     * Taille max décodée : 2 Mo.
+     */
+    public function apiSaveCrop(array $p): void
+    {
+        $studentId = (int)$p['id'];
+        $db = Database::get();
+
+        // Vérifier que l'élève existe
+        $stmt = $db->prepare("SELECT s.last_name, s.first_name, c.name AS class_name FROM students s JOIN classes c ON c.id = s.class_id WHERE s.id = ?");
+        $stmt->execute([$studentId]);
+        $student = $stmt->fetch();
+        if (!$student) { Response::json(['error' => 'Élève introuvable'], 404); return; }
+
+        // Lire le body JSON
+        $body = json_decode(file_get_contents('php://input'), true);
+        $dataUrl = $body['dataUrl'] ?? '';
+
+        // Valider le format data URI
+        if (!preg_match('/^data:image\/(jpeg|png|webp);base64,(.+)$/s', $dataUrl, $matches)) {
+            Response::json(['error' => 'Format dataUrl invalide'], 400); return;
+        }
+
+        $imageData = base64_decode($matches[2]);
+        if ($imageData === false || strlen($imageData) === 0) {
+            Response::json(['error' => 'Données image invalides'], 400); return;
+        }
+
+        // Limite 2 Mo sur la donnée décodée
+        if (strlen($imageData) > 2097152) {
+            Response::json(['error' => 'Image trop lourde (max 2 Mo)'], 400); return;
+        }
+
+        // Charger via GD pour validation + reconversion JPEG propre
+        $img = @imagecreatefromstring($imageData);
+        if (!$img) { Response::json(['error' => 'Image corrompue ou illisible'], 400); return; }
+
+        // Chemin cible (même convention que PhotoController / apiUploadPhoto)
+        $classeFichier = nettoyerChaine($student['class_name']);
+        $nomFichier    = nettoyerChaine(mb_strtoupper($student['last_name'], 'UTF-8'));
+        $prenomFichier = removeAccents(nettoyerChaine($student['first_name']));
+
+        $dir  = '/var/www/sub-domains/proclasse/public/data/photos_eleves/';
+        $path = $dir . "{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
+
+        if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+        if (!imagejpeg($img, $path, 90)) {
+            imagedestroy($img);
+            Response::json(['error' => 'Impossible d\'enregistrer la photo recadrée'], 500); return;
+        }
+        imagedestroy($img);
+
+        Response::json(['ok' => true]);
+    }
+
     public function apiSummary(array $p): void
     {
         $studentId = (int)($p['id'] ?? 0);
