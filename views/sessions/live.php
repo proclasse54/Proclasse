@@ -360,7 +360,7 @@ a.live-nav-btn:focus-visible::after {
                   <div class="seat-photo-wrapper">
                     <img src="<?= htmlspecialchars($photoUrl) ?>"
                         alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
-                        class="seat-photo" loading="lazy">
+                        class="seat-photo" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
                   </div>
                 <?php else: ?>
                   <div class="seat-photo-placeholder">
