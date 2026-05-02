@@ -9,7 +9,8 @@ class IcsImportController
     /**
      * POST /api/sessions/import-ics
      * Importe les séances depuis un fichier ICS Pronote.
-     * Si aucun plan n'existe pour une classe, en crée un aléatoire.
+     * Si aucun plan n'existe pour une classe, en crée un aléatoire
+     * UNIQUEMENT pour les séances à venir (date >= aujourd'hui).
      */
     public function apiImportIcs(): void
     {
@@ -46,6 +47,9 @@ class IcsImportController
         $created  = 0;
         $ignored  = 0;
         $errors   = [];
+
+        // Date du jour (sans heure) pour comparer avec les dates de séances
+        $today = date('Y-m-d');
 
         foreach ($events as $ev) {
             // N'importer que les cours (Cours, Cours modifié...)
@@ -96,7 +100,7 @@ class IcsImportController
             }
 
             if (!$class) {
-                // Séance multi-classes (ex: "3A, 3B, 3C…") ou libellé sans classe reconnue
+                // Séance multi-classes (ex: "3A, 3B, 3C…") ou libéllé sans classe reconnue
                 // → insérer comme séance informative sans plan_id ni affectations
                 if (str_contains($className, ',')) {
                     // Déduplication : même subject + date + time_start sans plan
@@ -143,6 +147,13 @@ class IcsImportController
             $plan = $stmtPlan->fetch();
 
             if (!$plan) {
+                // Séance passée sans plan existant → on l'importe sans plan
+                // (pas de génération aléatoire pour une séance terminée)
+                if ($date < $today) {
+                    $skipped++;
+                    continue;
+                }
+
                 $planId = $this->createRandomPlan(
                     $db,
                     $class['id'],
