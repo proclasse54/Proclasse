@@ -566,36 +566,64 @@ async function apiFetch(url, options = {}) {
     throw networkErr; // perte réseau, pas une déconnexion
   }
 
-  // 401 : toujours une expiration de session
+  // 401 = session expirée certaine
   if (r.status === 401) {
     showSessionExpiredToast();
     throw new Error('Session expirée');
   }
 
-  // 403 : peut être expiration OU refus métier (séance passée, etc.)
+  // Type de réponse
+  const contentType = r.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+
+  // Lecture du body sans supposer qu'il soit toujours en JSON
+  let body = null;
+  if (isJson) {
+    try {
+      body = await r.json();
+    } catch (_) {
+      body = null;
+    }
+  } else {
+    try {
+      body = await r.text();
+    } catch (_) {
+      body = null;
+    }
+  }
+
+  // 403 = session expirée uniquement si le backend le dit explicitement
   if (r.status === 403) {
-    let body;
-    try { body = await r.json(); } catch (_) { body = null; }
-    if (body && body.expired === true) {
+    if (isJson && body && body.expired === true) {
       showSessionExpiredToast();
       throw new Error('Session expirée');
     }
-    // Refus métier : on remonte l'erreur avec le message serveur
-    throw new Error(body?.error || 'Action non autorisée');
+    throw new Error(isJson && body && body.error ? body.error : 'Action non autorisée');
   }
 
-  // Essai de parse JSON pour les autres statuts
-  let data;
-  try {
-    data = await r.json();
-  } catch (_) {
-    if (!r.ok) {
-      throw new Error(`Erreur HTTP ${r.status}`);
+  // Autres erreurs HTTP : ne pas les confondre avec une session expirée
+  if (!r.ok) {
+    if (isJson && body && body.expired === true) {
+      showSessionExpiredToast();
+      throw new Error('Session expirée');
     }
+    if (isJson && body && body.error) {
+      throw new Error(body.error);
+    }
+    throw new Error(`Erreur HTTP ${r.status}`);
+  }
+
+  // Succès HTTP mais réponse non JSON
+  if (!isJson) {
     throw new Error(`Réponse invalide du serveur (${r.status})`);
   }
 
-  return data;
+  // Succès HTTP mais JSON illisible
+  if (body === null) {
+    throw new Error(`Réponse JSON invalide du serveur (${r.status})`);
+  }
+
+  return body;
 }
 
 // --------------------------------------------------
