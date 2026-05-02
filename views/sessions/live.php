@@ -44,6 +44,188 @@ $globalNextTooltip = formatNavTooltip($globalNextRow ?? null, 'next');
 
 ob_start();
 ?>
+<style>
+/* ── Navigation séance précédente / suivante ── */
+.live-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.live-date-label {
+  font-variant-numeric: tabular-nums;
+}
+.live-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+  position: relative;
+}
+a.live-nav-btn:hover {
+  background: var(--divider);
+  color: var(--primary);
+}
+.live-nav-btn--disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+/* Tooltip CSS natif enrichi */
+a.live-nav-btn::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text, #28251d);
+  color: var(--color-text-inverse, #f9f8f4);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 100;
+}
+a.live-nav-btn:hover::after,
+a.live-nav-btn:focus-visible::after {
+  opacity: 1;
+}
+
+/* ── Nom du plan (discret, italique) ── */
+.live-title-plan {
+  font-style: italic;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Badge lecture seule ── */
+.badge-past {
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ── Bouton Supprimer la séance ── */
+.btn-delete-session {
+  margin-left: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ── Bandeau séance passée ── */
+.past-session-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  border-bottom: 1px solid oklch(from var(--color-warning, #964219) l c h / 0.2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* ── Plan de salle lecture seule ── */
+.live-room--readonly .live-seat.occupied {
+  cursor: default;
+  opacity: 0.88;
+}
+.live-room--readonly .live-seat.occupied:active {
+  transform: none;
+}
+
+/* ── Toast session expirée ── */
+.session-expired-toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--color-surface, #fff);
+  border: 1.5px solid var(--color-warning, #964219);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px oklch(0.2 0.02 60 / 0.18);
+  padding: var(--space-4) var(--space-5);
+  z-index: 10000;
+  max-width: min(480px, calc(100vw - var(--space-8)));
+  animation: toastIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* CORRECTIF : [hidden] doit l'emporter sur display:flex */
+.session-expired-toast[hidden] {
+  display: none !important;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.session-expired-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+.session-expired-body {
+  flex: 1;
+  min-width: 0;
+}
+.session-expired-body strong {
+  display: block;
+  color: var(--color-warning, #964219);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-1);
+}
+.session-expired-body p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+/* Plan de salle grisé quand session expirée */
+.live-room.session-expired {
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.4);
+  transition: opacity 300ms ease, filter 300ms ease;
+}
+.skipped-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.skipped-list li {
+  background: var(--color-warning-highlight, #ddcfc6);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* ── Variante danger pour scope-btn (modale suppression) ── */
+.scope-btn--danger {
+  border-color: var(--color-error, #a12c7b);
+  color: var(--color-error, #a12c7b);
+}
+.scope-btn--danger:hover {
+  background: var(--color-error-highlight, #e0ced7);
+}
+</style>
+
 <div class="live-header">
 
   <!-- ── Zone gauche : retour + identité de la séance ── -->
@@ -892,198 +1074,4 @@ window.seatStudentMap  = seatStudentMap;
 
 <?php
 $content = ob_get_clean();
-?>
-<!DOCTYPE html>
-<html lang="fr" data-theme="light">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="/css/app.css">
-<style>
-/* ── Navigation séance précédente / suivante ── */
-.live-date-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-.live-date-label {
-  font-variant-numeric: tabular-nums;
-}
-.live-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  color: var(--text-muted);
-  text-decoration: none;
-  transition: background var(--transition), color var(--transition);
-  flex-shrink: 0;
-  position: relative;
-}
-a.live-nav-btn:hover {
-  background: var(--divider);
-  color: var(--primary);
-}
-.live-nav-btn--disabled {
-  opacity: 0.25;
-  cursor: default;
-  pointer-events: none;
-}
-/* Tooltip CSS natif enrichi */
-a.live-nav-btn::after {
-  content: attr(title);
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--color-text, #28251d);
-  color: var(--color-text-inverse, #f9f8f4);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  white-space: nowrap;
-  padding: 4px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 150ms ease;
-  z-index: 100;
-}
-a.live-nav-btn:hover::after,
-a.live-nav-btn:focus-visible::after {
-  opacity: 1;
-}
-
-/* ── Nom du plan (discret, italique) ── */
-.live-title-plan {
-  font-style: italic;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-}
-
-/* ── Badge lecture seule ── */
-.badge-past {
-  background: var(--color-warning-highlight, #ddcfc6);
-  color: var(--color-warning, #964219);
-  font-size: var(--text-xs);
-  border-radius: var(--radius-full);
-  padding: 2px 8px;
-  font-weight: 600;
-  vertical-align: middle;
-}
-
-/* ── Bouton Supprimer la séance ── */
-.btn-delete-session {
-  margin-left: var(--space-2);
-  flex-shrink: 0;
-}
-
-/* ── Bandeau séance passée ── */
-.past-session-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  background: var(--color-warning-highlight, #ddcfc6);
-  color: var(--color-warning, #964219);
-  border-bottom: 1px solid oklch(from var(--color-warning, #964219) l c h / 0.2);
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--text-sm);
-}
-
-/* ── Plan de salle lecture seule ── */
-.live-room--readonly .live-seat.occupied {
-  cursor: default;
-  opacity: 0.88;
-}
-.live-room--readonly .live-seat.occupied:active {
-  transform: none;
-}
-
-/* ── Toast session expirée ── */
-.session-expired-toast {
-  position: fixed;
-  bottom: var(--space-6);
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  background: var(--color-surface, #fff);
-  border: 1.5px solid var(--color-warning, #964219);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px oklch(0.2 0.02 60 / 0.18);
-  padding: var(--space-4) var(--space-5);
-  z-index: 10000;
-  max-width: min(480px, calc(100vw - var(--space-8)));
-  animation: toastIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-/* CORRECTIF : [hidden] doit l'emporter sur display:flex */
-.session-expired-toast[hidden] {
-  display: none !important;
-}
-@keyframes toastIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-.session-expired-icon {
-  font-size: 1.5rem;
-  flex-shrink: 0;
-}
-.session-expired-body {
-  flex: 1;
-  min-width: 0;
-}
-.session-expired-body strong {
-  display: block;
-  color: var(--color-warning, #964219);
-  font-size: var(--text-sm);
-  margin-bottom: var(--space-1);
-}
-.session-expired-body p {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-/* Plan de salle grisé quand session expirée */
-.live-room.session-expired {
-  opacity: 0.45;
-  pointer-events: none;
-  user-select: none;
-  filter: grayscale(0.4);
-  transition: opacity 300ms ease, filter 300ms ease;
-}
-.skipped-list {
-  list-style: none;
-  margin: var(--space-3) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-height: 260px;
-  overflow-y: auto;
-}
-.skipped-list li {
-  background: var(--color-warning-highlight, #ddcfc6);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--color-text);
-}
-
-/* ── Variante danger pour scope-btn (modale suppression) ── */
-.scope-btn--danger {
-  border-color: var(--color-error, #a12c7b);
-  color: var(--color-error, #a12c7b);
-}
-.scope-btn--danger:hover {
-  background: var(--color-error-highlight, #e0ced7);
-}
-</style>
-</head>
-<body class="live-body">
-<?= $content ?>
-<script src="/js/app.js"></script>
-</body>
-</html>
+include __DIR__ . '/../layouts/app.php';
