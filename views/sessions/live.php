@@ -1350,11 +1350,15 @@ function _loadImageIntoCrop(img, cropData) {
 }
 
 /** Met à jour la position CSS de l'overlay de sélection */
+
 function renderSelection() {
-  cropSelection.style.left   = _sel.x + 'px';
-  cropSelection.style.top    = _sel.y + 'px';
-  cropSelection.style.width  = _sel.w + 'px';
-  cropSelection.style.height = _sel.h + 'px';
+  const rect   = cropCanvas.getBoundingClientRect();
+  const scaleX = rect.width  / cropCanvas.width;
+  const scaleY = rect.height / cropCanvas.height;
+  cropSelection.style.left   = (_sel.x * scaleX) + 'px';
+  cropSelection.style.top    = (_sel.y * scaleY) + 'px';
+  cropSelection.style.width  = (_sel.w * scaleX) + 'px';
+  cropSelection.style.height = (_sel.h * scaleY) + 'px';
 }
 
 /** Clamp un nombre entre min et max */
@@ -1364,9 +1368,12 @@ function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function getPos(e) {
   const rect = cropCanvas.getBoundingClientRect();
   const src  = e.touches ? e.touches[0] : e;
+  // Correction du ratio entre taille CSS affichée et taille canvas réelle
+  const scaleX = cropCanvas.width  / rect.width;
+  const scaleY = cropCanvas.height / rect.height;
   return {
-    x: src.clientX - rect.left,
-    y: src.clientY - rect.top
+    x: (src.clientX - rect.left) * scaleX,
+    y: (src.clientY - rect.top)  * scaleY
   };
 }
 
