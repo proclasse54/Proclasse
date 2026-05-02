@@ -42,7 +42,6 @@ $prevTooltip       = formatNavTooltip($prevRow       ?? null, 'prev');
 $nextTooltip       = formatNavTooltip($nextRow       ?? null, 'next');
 $globalNextTooltip = formatNavTooltip($globalNextRow ?? null, 'next');
 
-ob_start();
 ?>
 <style>
 /* ── Navigation séance précédente / suivante ── */
@@ -1073,5 +1072,4 @@ window.seatStudentMap  = seatStudentMap;
 </script>
 
 <?php
-$content = ob_get_clean();
 include __DIR__ . '/../layouts/app.php';
