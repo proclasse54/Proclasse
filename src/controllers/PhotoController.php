@@ -6,6 +6,9 @@ class PhotoController
         $studentId = (int)($_GET['student_id'] ?? 0);
         if (!$studentId) { http_response_code(404); exit; }
 
+        // Paramètre optionnel : ?original=1 → retourne la photo brute sans recadrage
+        $original = !empty($_GET['original']);
+
         $db   = Database::get();
         $stmt = $db->prepare("
             SELECT s.last_name, s.first_name, s.class_id, c.name AS class_name
@@ -24,6 +27,14 @@ class PhotoController
         $path = '/var/www/sub-domains/proclasse/public/data/photos_eleves/'."{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
 
         if (!file_exists($path)) { http_response_code(404); exit; }
+
+        if ($original) {
+            // Mode original : on sert le fichier brut sans aucun recadrage
+            header('Content-Type: image/jpeg');
+            header('Cache-Control: no-store'); // pas de cache pour l'original (usage éditeur)
+            readfile($path);
+            exit;
+        }
 
         $crop    = getCropSettings($studentId, (int)$student['class_id']);
         $rogned  = rognerPortrait(file_get_contents($path), $crop);
