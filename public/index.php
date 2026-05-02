@@ -133,6 +133,8 @@ $router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}',     fn(
 // Onglets fiche élève
 $router->add('POST',   '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiUploadPhoto($p));
 $router->add('DELETE', '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiDeletePhoto($p));
+// Recadrage photo élève (crop Canvas → base64 → JPEG)
+$router->add('POST',   '/api/students/{id}/photo-crop',                      fn($p)=> (new StudentController)->apiSaveCrop($p));
 
 
 // Imports
