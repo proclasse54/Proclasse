@@ -10,7 +10,8 @@ class IcsImportController
      * POST /api/sessions/import-ics
      * Importe les séances depuis un fichier ICS Pronote.
      * Si aucun plan n'existe pour une classe, en crée un aléatoire
-     * UNIQUEMENT pour les séances à venir (date >= aujourd'hui).
+     * UNIQUEMENT pour les séances qui ne sont pas encore terminées
+     * (on compare date+heure de fin avec le moment présent).
      */
     public function apiImportIcs(): void
     {
@@ -48,8 +49,8 @@ class IcsImportController
         $ignored  = 0;
         $errors   = [];
 
-        // Date du jour (sans heure) pour comparer avec les dates de séances
-        $today = date('Y-m-d');
+        // Timestamp actuel (Europe/Paris) pour détecter les séances déjà terminées
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Paris'));
 
         foreach ($events as $ev) {
             // N'importer que les cours (Cours, Cours modifié...)
@@ -64,8 +65,6 @@ class IcsImportController
             }
 
             // Convertir DTSTART en date + heure locale Paris
-            // On transmet la TZID extraite par parseIcs() pour gérer correctement
-            // les dates Pronote de type DTSTART;TZID=Europe/Paris:20260427T080000
             $dtStart = $this->icsDateToLocal(
                 $ev['dtstart'] ?? '',
                 $ev['dtstart_tzid'] ?? null
@@ -100,10 +99,7 @@ class IcsImportController
             }
 
             if (!$class) {
-                // Séance multi-classes (ex: "3A, 3B, 3C…") ou libéllé sans classe reconnue
-                // → insérer comme séance informative sans plan_id ni affectations
                 if (str_contains($className, ',')) {
-                    // Déduplication : même subject + date + time_start sans plan
                     $stmtDup = $db->prepare(
                         "SELECT id FROM sessions
                         WHERE plan_id IS NULL AND `date` = ? AND time_start = ? AND subject = ?
@@ -118,16 +114,12 @@ class IcsImportController
                     )->execute([trim($className), $date, $timeStart, $timeEnd, $subject]);
                     $inserted++;
                 } else {
-                    // Classe simple mais inconnue en base (ex: "M. JACQUE ARNAUD" = réunion sans classe)
-                    // → ignorer silencieusement
                     $ignored++;
                 }
                 continue;
             }
 
             // --- Trouver ou créer un plan ---
-            // Si c'est un groupe, chercher un plan lié à ce groupe
-            // Sinon, chercher un plan lié à la classe entière (group_id NULL)
             if ($group) {
                 $stmtPlan = $db->prepare(
                     "SELECT id FROM seating_plans 
@@ -147,9 +139,10 @@ class IcsImportController
             $plan = $stmtPlan->fetch();
 
             if (!$plan) {
-                // Séance passée sans plan existant → on l'importe sans plan
-                // (pas de génération aléatoire pour une séance terminée)
-                if ($date < $today) {
+                // Séance déjà terminée (on compare date+heure de fin avec maintenant)
+                // → pas de génération de plan aléatoire, on ignore la séance
+                $sessionEnd = $dtEnd ?? $dtStart; // fallback sur dtStart si pas de fin
+                if ($sessionEnd <= $now) {
                     $skipped++;
                     continue;
                 }
@@ -181,9 +174,6 @@ class IcsImportController
             }
 
             // --- Insérer la séance + snapshot session_seats ---
-            // Le snapshot copie l'état actuel de seating_assignments dans session_seats,
-            // exactement comme SessionController::apiCreate() le fait.
-            // Sans ce snapshot, aucun élève n'apparaît sur les places en vue live.
             $stmtPlanRoom = $db->prepare("SELECT room_id FROM seating_plans WHERE id = ?");
             $stmtPlanRoom->execute([$plan['id']]);
             $planRow = $stmtPlanRoom->fetch();
@@ -201,8 +191,6 @@ class IcsImportController
                 )->execute([$plan['id'], $date, $timeStart, $timeEnd, $subject]);
                 $sessionId = (int)$db->lastInsertId();
 
-                // Snapshot : copie de toutes les places de la salle avec l'élève affecté
-                // (NULL si la place est vide dans seating_assignments pour ce plan).
                 $db->prepare(
                     "INSERT INTO session_seats (session_id, seat_id, student_id)
                      SELECT ?, s.id, sa.student_id
@@ -236,7 +224,6 @@ class IcsImportController
 
     private function createRandomPlan(\PDO $db, int $classId, string $className, ?int $groupId = null): ?int
     {
-        // 1. Récupérer les élèves — du groupe si précisé, sinon de toute la classe
         if ($groupId) {
             $stmtStudents = $db->prepare(
                 "SELECT s.id FROM students s
@@ -259,7 +246,6 @@ class IcsImportController
 
         $count = count($studentIds);
 
-        // 2. Chercher une salle avec assez de sièges
         $stmtRoom = $db->prepare(
             "SELECT r.id FROM rooms r
             INNER JOIN seats s ON s.room_id = r.id
@@ -286,13 +272,11 @@ class IcsImportController
 
         $roomId = (int)$room['id'];
 
-        // 3. Créer le plan — avec group_id si c'est un plan de groupe
         $db->prepare(
             "INSERT INTO seating_plans (class_id, group_id, room_id, name) VALUES (?, ?, ?, ?)"
         )->execute([$classId, $groupId, $roomId, "Plan aléatoire - $className"]);
         $planId = (int)$db->lastInsertId();
 
-        // 4. Récupérer les sièges
         $stmtSeats = $db->prepare(
             "SELECT id FROM seats WHERE room_id = ? ORDER BY row_index, col_index"
         );
@@ -301,7 +285,6 @@ class IcsImportController
 
         if (empty($seatIds)) { return null; }
 
-        // 5. Mélange et affectation
         shuffle($studentIds);
         shuffle($seatIds);
 
@@ -334,7 +317,6 @@ class IcsImportController
 
     private function parseIcs(string $content): array
     {
-        // Déplier les lignes repliées RFC 5545
         $content = preg_replace("/\r\n[ \t]/", '', $content);
         $content = preg_replace("/\n[ \t]/",   '', $content);
 
@@ -352,21 +334,18 @@ class IcsImportController
             }
             if ($current === null) { continue; }
 
-            // regex robuste supportant TZID= et autres paramètres contenant ":"
-            // La valeur commence après le premier ":" qui suit le nom de propriété (+ paramètres)
             if (!preg_match('/^([A-Z][A-Z0-9\-]*)((?:;[^:]+)*):(.*)/s', $line, $m)) {
                 continue;
             }
 
             $key    = strtolower($m[1]);
-            $params = $m[2]; // ex: ";TZID=Europe/Paris"
+            $params = $m[2];
             $val    = str_replace(
                 ['\\n', '\\N', '\\,', '\\;'],
                 ["\n",  "\n",  ',',   ';'],
                 $m[3]
             );
 
-            // Stocker la timezone du DTSTART/DTEND si présente dans les paramètres
             if (in_array($key, ['dtstart', 'dtend'], true) && str_contains($params, 'TZID=')) {
                 preg_match('/TZID=([^;]+)/', $params, $tzMatch);
                 $current[$key . '_tzid'] = isset($tzMatch[1]) ? trim($tzMatch[1]) : null;
@@ -387,19 +366,14 @@ class IcsImportController
 
         $subject = $parts[0];
 
-        // Priorité 1 : chercher un [...] dans la chaîne entière
-        // → cas "MATIERE - NOM - [3PM_GR1] - <3 PM> 3PM_GR1"
         if (preg_match('/\[([^\]]+)\]/', $summary, $m)) {
             return [$subject ?: null, trim($m[1]) ?: null];
         }
 
-        // Priorité 2 : chercher un <...>
         if (preg_match('/<([^>]+)>/', $summary, $m)) {
             return [$subject ?: null, trim($m[1]) ?: null];
         }
 
-        // Priorité 3 : pas de crochets → le dernier segment est la classe
-        // (gère "MATIERE - NOM PROF - 3B" et "MATIERE - NOM - 3A, 3B, 3C")
         $last = trim(end($parts), '[]<>()');
         return [$subject ?: null, $last ?: null];
     }
@@ -413,7 +387,6 @@ class IcsImportController
                 $dt = new \DateTime($icsDate, new \DateTimeZone('UTC'));
                 $dt->setTimezone(new \DateTimeZone('Europe/Paris'));
             } elseif ($tzid) {
-                // Utiliser la TZID extraite des paramètres ICS si disponible
                 $tz = new \DateTimeZone($tzid);
                 $dt = new \DateTime($icsDate, $tz);
                 $dt->setTimezone(new \DateTimeZone('Europe/Paris'));
