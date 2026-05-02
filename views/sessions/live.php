@@ -356,17 +356,15 @@ a.live-nav-btn:focus-visible::after {
                 <?php
                   $photoUrl = $seat['student_id'] ? '/photo?student_id=' . (int)$seat['student_id'] : null;
                 ?>
-                <?php if ($photoUrl): ?>
-                  <div class="seat-photo-wrapper">
-                    <img src="<?= htmlspecialchars($photoUrl) ?>"
-                        alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
-                        class="seat-photo" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="seat-photo-wrapper">
+                  <img src="<?= htmlspecialchars($photoUrl) ?>"
+                      alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
+                      class="seat-photo" loading="lazy"
+                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                  <div class="seat-photo-placeholder" style="display:none;">
+                    <?= htmlspecialchars(mb_strtoupper(mb_substr($seat['first_name'], 0, 1) . mb_substr($seat['last_name'], 0, 1))) ?>
                   </div>
-                <?php else: ?>
-                  <div class="seat-photo-placeholder">
-                    <?= htmlspecialchars(mb_substr($seat['first_name'], 0, 1) . mb_substr($seat['last_name'], 0, 1)) ?>
-                  </div>
-                <?php endif; ?>
+                </div>
 
                 <div class="seat-name">
                   <?= htmlspecialchars($seat['first_name']) ?><br>
@@ -1100,6 +1098,11 @@ const modalName     = document.getElementById('modalStudentName');
 const modalClass    = document.getElementById('modalClass');
 const modalBody     = document.getElementById('modalBody');
 const modalRemoveBtn = document.getElementById('modalRemoveBtn');
+const modalPhotoPanel     = document.getElementById('modalPhotoPanel');
+const modalPhotoInput     = document.getElementById('modalPhotoInput');
+const modalPhotoDeleteBtn = document.getElementById('modalPhotoDeleteBtn');
+const modalPhotoPreview   = document.getElementById('modalPhotoPreview');
+const modalPhotoHint      = document.getElementById('modalPhotoHint');
 
 let _modalStudentId = null;
 let _modalSeatId    = null;
@@ -1108,6 +1111,8 @@ function openStudentModal(studentId, seatId, studentName) {
   _modalStudentId = studentId;
   _modalSeatId    = seatId;
 
+  switchTab('donnees');
+  
   // Avatar
   const img = document.createElement('img');
   img.src = '/photo?student_id=' + studentId;
@@ -1227,4 +1232,73 @@ modalRemoveBtn.addEventListener('click', () => {
     modalRemoveBtn.textContent = '🗑 Retirer du plan de salle';
   });
 });
+
+
+// ── Onglets ──────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.student-modal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  modalBody.hidden       = (name !== 'donnees');
+  modalPhotoPanel.hidden = (name !== 'photo');
+}
+document.querySelectorAll('.student-modal-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    switchTab(btn.dataset.tab);
+    if (btn.dataset.tab === 'photo' && _modalStudentId) renderPhotoTab(_modalStudentId);
+  });
+});
+
+// ── Onglet Photo ─────────────────────────────────────────────
+function renderPhotoTab(studentId) {
+  modalPhotoPreview.innerHTML = '';
+  modalPhotoHint.textContent  = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
+  const img = document.createElement('img');
+  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+  img.alt = 'Photo élève';
+  img.style.cssText = 'max-width:160px;max-height:160px;border-radius:var(--radius-md);object-fit:cover;';
+  img.onerror = () => { modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>'; };
+  modalPhotoPreview.appendChild(img);
+}
+
+modalPhotoInput.addEventListener('change', () => {
+  const file = modalPhotoInput.files[0];
+  if (!file || !_modalStudentId) return;
+  if (file.size > 2097152) { modalPhotoHint.textContent = 'Fichier trop lourd (max 2 Mo).'; return; }
+  const fd = new FormData();
+  fd.append('photo', file);
+  fd.append('student_id', _modalStudentId);
+  modalPhotoHint.textContent = 'Envoi en cours…';
+  fetch('/api/students/' + _modalStudentId + '/photo', { method: 'POST', body: fd })
+    .then(r => r.json()).then(d => {
+      modalPhotoHint.textContent = d.ok ? 'Photo mise à jour !' : (d.error || 'Erreur.');
+      if (d.ok) {
+        renderPhotoTab(_modalStudentId);
+        // Rafraîchir l'avatar en-tête
+        const av = document.createElement('img');
+        av.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now();
+        av.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
+        av.onerror = () => { modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase(); };
+        modalAvatar.innerHTML = ''; modalAvatar.appendChild(av);
+        // Rafraîchir la vignette du plan
+        const seatEl = getSeatEl(_modalSeatId);
+        if (seatEl) { const si = seatEl.querySelector('.seat-photo'); if (si) { si.src = '/photo?student_id='+_modalStudentId+'&t='+Date.now(); si.style.display=''; if(si.nextElementSibling) si.nextElementSibling.style.display='none'; } }
+      }
+    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
+  modalPhotoInput.value = '';
+});
+
+modalPhotoDeleteBtn.addEventListener('click', () => {
+  if (!_modalStudentId || !confirm('Supprimer la photo ?')) return;
+  fetch('/api/students/' + _modalStudentId + '/photo', { method: 'DELETE' })
+    .then(r => r.json()).then(d => {
+      modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
+      if (d.ok) {
+        renderPhotoTab(_modalStudentId);
+        modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase();
+        const seatEl = getSeatEl(_modalSeatId);
+        if (seatEl) { const si = seatEl.querySelector('.seat-photo'); if (si) { si.style.display='none'; if(si.nextElementSibling) si.nextElementSibling.style.display='flex'; } }
+      }
+    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
+});
+
+
 </script>

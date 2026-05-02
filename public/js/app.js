@@ -68,11 +68,6 @@ function initStudentModal() {
   const modal     = document.getElementById('studentModal');
   const modalBody = document.getElementById('modalBody');
   const liveRoom  = document.getElementById('liveRoom');
-  const modalPhotoPanel     = document.getElementById('modalPhotoPanel');
-  const modalPhotoInput     = document.getElementById('modalPhotoInput');
-  const modalPhotoDeleteBtn = document.getElementById('modalPhotoDeleteBtn');
-  const modalPhotoPreview   = document.getElementById('modalPhotoPreview');
-  const modalPhotoHint      = document.getElementById('modalPhotoHint');
 
   if (!modal || !liveRoom) return; // pas sur la page live
 
@@ -230,59 +225,6 @@ function initStudentModal() {
   liveRoom.addEventListener('touchend',    () => { clearTimeout(longPressTimer); longPressTimer = null; });
   liveRoom.addEventListener('touchcancel', () => { clearTimeout(longPressTimer); longPressTimer = null; });
   liveRoom.addEventListener('touchmove',   () => { clearTimeout(longPressTimer); longPressTimer = null; });
-
-
-  // Onglets
-  document.querySelectorAll('.student-modal-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.student-modal-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.dataset.tab;
-      modalBody.hidden       = (tab !== 'donnees');
-      modalPhotoPanel.hidden = (tab !== 'photo');
-      if (tab === 'photo' && _modalStudentId) renderPhotoTab(_modalStudentId);
-    });
-  });
-
-  function switchTab(name) {
-    document.querySelectorAll('.student-modal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    modalBody.hidden       = (name !== 'donnees');
-    modalPhotoPanel.hidden = (name !== 'photo');
-  }
-
-  function renderPhotoTab(studentId) {
-    modalPhotoPreview.innerHTML = '';
-    modalPhotoHint.textContent  = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
-    const img = document.createElement('img');
-    img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
-    img.alt = 'Photo élève';
-    img.style.cssText = 'max-width:160px;max-height:160px;border-radius:var(--radius-md);object-fit:cover;';
-    img.onerror = () => { modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>'; };
-    modalPhotoPreview.appendChild(img);
-  }
-
-  modalPhotoInput.addEventListener('change', () => {
-    const file = modalPhotoInput.files[0];
-    if (!file || !_modalStudentId) return;
-    if (file.size > 2097152) { modalPhotoHint.textContent = 'Fichier trop lourd (max 2 Mo).'; return; }
-    const fd = new FormData(); fd.append('photo', file); fd.append('student_id', _modalStudentId);
-    modalPhotoHint.textContent = 'Envoi en cours…';
-    fetch('/api/students/' + _modalStudentId + '/photo', { method: 'POST', body: fd })
-      .then(r => r.json()).then(d => {
-        modalPhotoHint.textContent = d.ok ? 'Photo mise à jour !' : (d.error || 'Erreur.');
-        if (d.ok) renderPhotoTab(_modalStudentId);
-      }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
-    modalPhotoInput.value = '';
-  });
-
-  modalPhotoDeleteBtn.addEventListener('click', () => {
-    if (!_modalStudentId || !confirm('Supprimer la photo ?')) return;
-    fetch('/api/students/' + _modalStudentId + '/photo', { method: 'DELETE' })
-      .then(r => r.json()).then(d => {
-        modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
-        if (d.ok) { renderPhotoTab(_modalStudentId); modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase(); }
-      }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
-  });
 
 }
 
