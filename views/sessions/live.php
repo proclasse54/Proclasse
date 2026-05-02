@@ -1160,7 +1160,7 @@ deleteSessionConfirm.addEventListener('click', () => {
         <!-- Prévisualisation photo actuelle (hors mode crop) -->
         <div id="modalPhotoPreview"></div>
 
-        <!-- Zone de recadrage (masquée par défaut, affichée après sélection d'un fichier) -->
+        <!-- Zone de recadrage (masquée par défaut, affichée après sélection d'un fichier ou clic sur Modifier) -->
         <div id="cropContainer" style="display:none; width:100%; text-align:center;">
           <div class="crop-area" id="cropArea">
             <!-- Le canvas recevra l'image source -->
@@ -1180,14 +1180,12 @@ deleteSessionConfirm.addEventListener('click', () => {
           </div>
         </div>
 
-        <!-- Boutons principaux (hors mode crop) -->
-        <div class="modal-photo-actions" id="photoMainActions">
-          <label class="btn btn-ghost btn-sm" for="modalPhotoInput">
-            📷 Choisir une photo
-            <input type="file" id="modalPhotoInput" accept="image/*" style="display:none;">
-          </label>
-          <button class="btn btn-danger btn-sm" id="modalPhotoDeleteBtn">🗑 Supprimer</button>
-        </div>
+        <!-- Boutons principaux (hors mode crop) — reconstruits dynamiquement par renderPhotoTab() -->
+        <div class="modal-photo-actions" id="photoMainActions"></div>
+
+        <!-- Input fichier (caché, déclenché programmatiquement) -->
+        <input type="file" id="modalPhotoInput" accept="image/*" style="display:none;">
+
         <p class="form-hint" id="modalPhotoHint">Formats : JPG, PNG, WEBP. Max 2 Mo.</p>
       </div>
     </div>
@@ -1215,7 +1213,6 @@ const modalBody     = document.getElementById('modalBody');
 const modalRemoveBtn = document.getElementById('modalRemoveBtn');
 const modalPhotoPanel     = document.getElementById('modalPhotoPanel');
 const modalPhotoInput     = document.getElementById('modalPhotoInput');
-const modalPhotoDeleteBtn = document.getElementById('modalPhotoDeleteBtn');
 const modalPhotoPreview   = document.getElementById('modalPhotoPreview');
 const modalPhotoHint      = document.getElementById('modalPhotoHint');
 const photoMainActions    = document.getElementById('photoMainActions');
@@ -1246,7 +1243,8 @@ const CANVAS_MAX_W = 420;
 const CANVAS_MAX_H = 340;
 
 /**
- * Charge une image dans le canvas de crop et initialise la sélection.
+ * Charge une image (File) dans le canvas de crop et initialise la sélection.
+ * Appelée quand l'utilisateur choisit un nouveau fichier.
  * @param {File} file
  */
 function initCrop(file) {
@@ -1254,39 +1252,68 @@ function initCrop(file) {
   reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      _cropImage = img;
-
-      // Calculer l'échelle pour faire tenir l'image dans CANVAS_MAX
-      _cropScale = Math.min(1, CANVAS_MAX_W / img.naturalWidth, CANVAS_MAX_H / img.naturalHeight);
-      const dw = Math.round(img.naturalWidth  * _cropScale);
-      const dh = Math.round(img.naturalHeight * _cropScale);
-
-      cropCanvas.width  = dw;
-      cropCanvas.height = dh;
-
-      // Dessiner l'image sur le canvas
-      const ctx = cropCanvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, dw, dh);
-
-      // Sélection initiale : carré centré de 80 % de la dimension minimale
-      const side = Math.round(Math.min(dw, dh) * 0.8);
-      _sel = {
-        x: Math.round((dw - side) / 2),
-        y: Math.round((dh - side) / 2),
-        w: side,
-        h: side
-      };
-      renderSelection();
-
-      // Afficher la zone de crop, masquer la prévisualisation et les boutons principaux
-      modalPhotoPreview.style.display  = 'none';
-      photoMainActions.style.display   = 'none';
-      cropContainer.style.display      = 'block';
-      modalPhotoHint.textContent        = 'Déplacez et redimensionnez le cadre, puis cliquez sur « Recadrer & enregistrer ».';
+      _loadImageIntoCrop(img);
     };
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+/**
+ * Charge la photo existante d'un élève (depuis /photo?student_id=...) dans
+ * le canvas de crop. Permet de recadrer une photo déjà enregistrée.
+ * @param {number} studentId
+ */
+function startCropFromExistingPhoto(studentId) {
+  modalPhotoHint.textContent = 'Chargement de la photo…';
+  const img = new Image();
+  img.crossOrigin = 'anonymous'; // nécessaire pour toDataURL sur le canvas
+  img.onload = () => {
+    _loadImageIntoCrop(img);
+  };
+  img.onerror = () => {
+    modalPhotoHint.textContent = 'Impossible de charger la photo existante.';
+  };
+  // Cache-busting pour forcer le rechargement de la dernière version
+  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+}
+
+/**
+ * Logique commune : prend un HTMLImageElement déjà chargé,
+ * l'affiche dans le canvas et initialise la sélection de crop.
+ * @param {HTMLImageElement} img
+ */
+function _loadImageIntoCrop(img) {
+  _cropImage = img;
+
+  // Calculer l'échelle pour faire tenir l'image dans CANVAS_MAX
+  _cropScale = Math.min(1, CANVAS_MAX_W / img.naturalWidth, CANVAS_MAX_H / img.naturalHeight);
+  const dw = Math.round(img.naturalWidth  * _cropScale);
+  const dh = Math.round(img.naturalHeight * _cropScale);
+
+  cropCanvas.width  = dw;
+  cropCanvas.height = dh;
+
+  // Dessiner l'image sur le canvas
+  const ctx = cropCanvas.getContext('2d');
+  ctx.clearRect(0, 0, dw, dh);
+  ctx.drawImage(img, 0, 0, dw, dh);
+
+  // Sélection initiale : carré centré de 80 % de la dimension minimale
+  const side = Math.round(Math.min(dw, dh) * 0.8);
+  _sel = {
+    x: Math.round((dw - side) / 2),
+    y: Math.round((dh - side) / 2),
+    w: side,
+    h: side
+  };
+  renderSelection();
+
+  // Afficher la zone de crop, masquer la prévisualisation et les boutons principaux
+  modalPhotoPreview.style.display  = 'none';
+  photoMainActions.style.display   = 'none';
+  cropContainer.style.display      = 'block';
+  modalPhotoHint.textContent        = 'Déplacez et redimensionnez le cadre, puis cliquez sur « Recadrer & enregistrer ».';
 }
 
 /** Met à jour la position CSS de l'overlay de sélection */
@@ -1663,15 +1690,87 @@ document.querySelectorAll('.student-modal-tab').forEach(btn => {
 });
 
 // ── Onglet Photo ─────────────────────────────────────────────────────────────
+/**
+ * Construit dynamiquement l'onglet Photo :
+ * - Affiche la photo existante (ou un placeholder si aucune)
+ * - Si une photo existe : bouton ✂️ Modifier le cadrage + 📷 Choisir une photo + 🗑 Supprimer
+ * - Si aucune photo      : bouton 📷 Choisir une photo uniquement
+ */
 function renderPhotoTab(studentId) {
   modalPhotoPreview.innerHTML = '';
   modalPhotoHint.textContent  = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
+
+  // ── Prévisualisation ──
   const img = document.createElement('img');
-  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
   img.alt = 'Photo élève';
   img.style.cssText = 'max-width:160px;max-height:160px;border-radius:var(--radius-md);object-fit:cover;';
-  img.onerror = () => { modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>'; };
+
+  img.onload = () => {
+    // Photo présente → afficher aussi le bouton Modifier le cadrage
+    photoMainActions.innerHTML = `
+      <button type="button" class="btn btn-secondary btn-sm" id="btnCropExisting">✂️ Modifier le cadrage</button>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        📷 Choisir une photo
+        <span id="fakePhotoTrigger" style="display:none;"></span>
+      </label>
+      <button type="button" class="btn btn-danger btn-sm" id="btnDeletePhoto">🗑 Supprimer</button>
+    `;
+    // Bouton Modifier le cadrage → charge la photo existante dans le crop
+    document.getElementById('btnCropExisting').addEventListener('click', () => {
+      startCropFromExistingPhoto(studentId);
+    });
+    // Label "Choisir une photo" → déclenche l'input file
+    photoMainActions.querySelector('label').addEventListener('click', () => {
+      modalPhotoInput.value = '';
+      modalPhotoInput.click();
+    });
+    // Bouton Supprimer
+    document.getElementById('btnDeletePhoto').addEventListener('click', () => {
+      _handlePhotoDelete(studentId);
+    });
+  };
+
+  img.onerror = () => {
+    // Pas de photo → afficher un placeholder et uniquement le bouton Choisir
+    modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>';
+    photoMainActions.innerHTML = `
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        📷 Choisir une photo
+        <span id="fakePhotoTrigger" style="display:none;"></span>
+      </label>
+    `;
+    photoMainActions.querySelector('label').addEventListener('click', () => {
+      modalPhotoInput.value = '';
+      modalPhotoInput.click();
+    });
+  };
+
+  // Cache-busting pour forcer l'affichage de la dernière version
+  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
   modalPhotoPreview.appendChild(img);
+}
+
+/**
+ * Supprime la photo d'un élève et rafraîchit l'UI.
+ * @param {number} studentId
+ */
+function _handlePhotoDelete(studentId) {
+  if (!confirm('Supprimer la photo ?')) return;
+  fetch('/api/students/' + studentId + '/photo', { method: 'DELETE' })
+    .then(r => r.json()).then(d => {
+      modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
+      if (d.ok) {
+        renderPhotoTab(studentId);
+        // Vider l'avatar en-tête de la modale
+        modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase();
+        // Masquer la photo dans la vignette siège
+        const seatEl = getSeatEl(_modalSeatId);
+        if (seatEl) {
+          const si = seatEl.querySelector('.seat-photo');
+          if (si) { si.style.display='none'; if(si.nextElementSibling) si.nextElementSibling.style.display='flex'; }
+        }
+      }
+    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
 }
 
 // Sélection d'un fichier → lancer le mode crop (au lieu d'uploader directement)
@@ -1681,20 +1780,6 @@ modalPhotoInput.addEventListener('change', () => {
   if (file.size > 2097152) { modalPhotoHint.textContent = 'Fichier trop lourd (max 2 Mo).'; return; }
   // Lancer l'interface de recadrage
   initCrop(file);
-});
-
-modalPhotoDeleteBtn.addEventListener('click', () => {
-  if (!_modalStudentId || !confirm('Supprimer la photo ?')) return;
-  fetch('/api/students/' + _modalStudentId + '/photo', { method: 'DELETE' })
-    .then(r => r.json()).then(d => {
-      modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
-      if (d.ok) {
-        renderPhotoTab(_modalStudentId);
-        modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase();
-        const seatEl = getSeatEl(_modalSeatId);
-        if (seatEl) { const si = seatEl.querySelector('.seat-photo'); if (si) { si.style.display='none'; if(si.nextElementSibling) si.nextElementSibling.style.display='flex'; } }
-      }
-    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
 });
 
 // ── Fallback robuste pour les photos de vignettes ────────────────────────────────────────
