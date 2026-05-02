@@ -1055,8 +1055,28 @@ deleteSessionConfirm.addEventListener('click', () => {
         <div class="student-modal-class" id="modalClass"></div>
       </div>
     </div>
-    <div class="student-modal-body" id="modalBody">
+    <!-- Onglets -->
+    <div class="student-modal-tabs">
+      <button class="student-modal-tab active" data-tab="donnees">Données</button>
+      <button class="student-modal-tab" data-tab="photo">Photo</button>
+    </div>    
+    <!-- Body -->
+    <div class="student-modal-body" id="modalBody" data-panel="donnees">
       <div class="student-modal-loading">Chargement&hellip;</div>
+    </div>
+    <!-- Onglet Photo -->
+    <div class="student-modal-body" id="modalPhotoPanel" data-panel="photo" hidden>
+      <div class="modal-photo-zone">
+        <div class="modal-photo-preview" id="modalPhotoPreview"></div>
+        <div class="modal-photo-actions">
+          <label class="btn btn-ghost btn-sm" for="modalPhotoInput">
+            📷 Choisir une photo
+            <input type="file" id="modalPhotoInput" accept="image/*" style="display:none;">
+          </label>
+          <button class="btn btn-danger btn-sm" id="modalPhotoDeleteBtn">🗑 Supprimer</button>
+        </div>
+        <p class="form-hint" id="modalPhotoHint">Formats : JPG, PNG, WEBP. Max 2 Mo.</p>
+      </div>
     </div>
     <div class="student-modal-footer">
       <button class="btn btn-danger btn-sm" id="modalRemoveBtn">

@@ -1132,3 +1132,17 @@ details[open] .modal-details-icon {
     padding: var(--space-3) var(--space-4);
   }
 }
+
+
+
+/* ── Onglets modale élève ─────────────────────────────────── */
+.student-modal-tabs { display:flex; border-bottom:1px solid var(--color-divider,#e5e5e5); padding:0 1.25rem; gap:.25rem; }
+.student-modal-tab { padding:.5rem .9rem; font-size:var(--text-sm,.875rem); font-weight:500; color:var(--color-text-muted,#888); background:none; border:none; border-bottom:2px solid transparent; cursor:pointer; transition:color var(--transition),border-color var(--transition); margin-bottom:-1px; }
+.student-modal-tab:hover { color:var(--color-text,#222); }
+.student-modal-tab.active { color:var(--color-primary,#01696f); border-bottom-color:var(--color-primary,#01696f); }
+/* ── Onglet Photo ─────────────────────────────────────────── */
+.modal-photo-zone { display:flex; flex-direction:column; align-items:center; gap:1rem; padding:1.25rem; }
+.modal-photo-preview { width:160px; height:160px; border-radius:var(--radius-md,6px); background:var(--color-surface-offset,#eee); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.modal-photo-empty { font-size:var(--text-sm,.875rem); color:var(--color-text-muted,#888); }
+.modal-photo-actions { display:flex; gap:.5rem; flex-wrap:wrap; justify-content:center; }
+.form-hint { font-size:var(--text-xs,.8rem); color:var(--color-text-muted,#888); text-align:center; }
