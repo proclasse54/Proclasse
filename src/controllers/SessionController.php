@@ -251,7 +251,11 @@ class SessionController
         $stmtObs->execute([$p['id']]);
         $observations = $stmtObs->fetchAll();
 
+        ob_start();
         require __DIR__ . '/../../views/sessions/live.php';
+        $content = ob_get_clean();
+
+        require __DIR__ . '/../../views/layouts/app.php';
     }
 
     // ================================================================
