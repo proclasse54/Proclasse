@@ -536,42 +536,554 @@ function showSkippedWarning(skipped) {
   const list = document.getElementById('skippedList');
   list.innerHTML = skipped.map(s => {
     const d = new Date(s.date);
-    const fmt = d.toLocaleDateString('fr-FR');
-    const t = s.time ? ' ' + s.time.slice(0,5) : '';
-    return `<li>${fmt}${t} — ${s.reason}</li>`;
+    const dateStr = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+    const timeStr = s.time ? ' ' + s.time.substring(0, 5) : '';
+    return `<li><strong>${dateStr}${timeStr}</strong> — ${s.reason}</li>`;
   }).join('');
   skippedModal.hidden = false;
+  document.getElementById('skippedClose').focus();
 }
-
 document.getElementById('skippedClose').addEventListener('click', () => { skippedModal.hidden = true; });
 skippedModal.addEventListener('click', e => { if (e.target === skippedModal) skippedModal.hidden = true; });
 
 // ──────────────────────────────────────────────
-// SUPPRESSION SÉANCE
+// API persistMove (scope: 'session' | 'forward')
+// ──────────────────────────────────────────────
+async function persistMove(studentId, sourceSeatId, targetSeatId, scope) {
+  return apiFetch(`/api/sessions/${SESSION_ID}/move-seat`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      student_id:    studentId,
+      source_seat_id: sourceSeatId,
+      target_seat_id: targetSeatId,
+      scope:          scope,
+    }),
+  });
+}
+
+// ──────────────────────────────────────────────
+// moveSeat : swap ou déplacement vers place vide
+// ──────────────────────────────────────────────
+async function moveSeat(studentId, targetSeatId) {
+  // Séance passée → aucun déplacement autorisé
+  if (IS_PAST_SESSION || _sessionExpired) return;
+
+  const sourceSeatId = parseInt(
+    Object.keys(seatStudentMap).find(k => seatStudentMap[k] === studentId)
+  );
+  if (isNaN(sourceSeatId) || sourceSeatId === targetSeatId) return;
+
+  const srcEl = getSeatEl(sourceSeatId);
+  const tgtEl = getSeatEl(targetSeatId);
+  if (!srcEl || !tgtEl) return;
+
+  const targetStudentId = seatStudentMap[targetSeatId] != null
+    ? parseInt(seatStudentMap[targetSeatId])
+    : null;
+
+  const isSwap    = targetStudentId !== null;
+  const srcName   = srcEl.dataset.studentName || 'l\'élève';
+  const scope     = await askScope(srcName, isSwap);
+  if (!scope) return;
+
+  // Optimistic UI
+  const srcPayload = seatMarkupFromData(srcEl);
+  const tgtPayload = seatMarkupFromData(tgtEl);
+  setSeatOccupied(tgtEl, srcPayload);
+  if (isSwap) setSeatOccupied(srcEl, tgtPayload); else setSeatEmpty(srcEl);
+  seatStudentMap[targetSeatId] = studentId ? parseInt(studentId) : null;
+  seatStudentMap[sourceSeatId] = isSwap ? parseInt(targetStudentId) : null;
+  clearSelection();
+
+  try {
+    const result = await persistMove(studentId, sourceSeatId, targetSeatId, scope);
+    if (!result.ok) throw new Error(result.error || 'Erreur inconnue');
+
+    if (result.skipped_sessions && result.skipped_sessions.length > 0) {
+      showSkippedWarning(result.skipped_sessions);
+    }
+  } catch (e) {
+    if (_sessionExpired) return;
+    // Rollback optimistic UI
+    if (srcPayload.occupied) setSeatOccupied(srcEl, srcPayload); else setSeatEmpty(srcEl);
+    if (tgtPayload.occupied) setSeatOccupied(tgtEl, tgtPayload); else setSeatEmpty(tgtEl);
+    seatStudentMap[sourceSeatId] = srcPayload.studentId ? parseInt(srcPayload.studentId) : null;
+    seatStudentMap[targetSeatId] = tgtPayload.studentId ? parseInt(tgtPayload.studentId) : null;
+    alert('Déplacement non enregistré.\n\nDétail : ' + e.message);
+  }
+}
+
+// --------------------------------------------------
+// Événements UI
+// --------------------------------------------------
+
+liveRoom.addEventListener('click', e => {
+  if (e.target.closest('.tag-chip')) return;
+
+  const seat = e.target.closest('.live-seat.occupied');
+  if (!seat) return;
+
+  if (seat._dragJustHappened) {
+    seat._dragJustHappened = false;
+    return;
+  }
+
+  openTagMenu(
+    parseInt(seat.dataset.seatId),
+    parseInt(seat.dataset.studentId),
+    seat.dataset.studentName
+  );
+});
+
+liveRoom.addEventListener('click', e => {
+  const chip = e.target.closest('.tag-chip');
+  if (!chip) return;
+  e.stopPropagation();
+  removeObs(parseInt(chip.dataset.obsId), parseInt(chip.dataset.studentId), chip);
+});
+
+tagsList.addEventListener('click', e => {
+  const btn = e.target.closest('.tag-btn');
+  if (!btn) return;
+  selectTag(btn.dataset.tag, btn.dataset.icon, btn.dataset.color);
+});
+
+// Drag souris — désactivé si séance passée
+let draggedStudentId = null;
+
+liveRoom.addEventListener('dragstart', e => {
+  if (IS_PAST_SESSION || _sessionExpired) { e.preventDefault(); return; }
+  const seat = e.target.closest('.live-seat.occupied');
+  if (!seat) { e.preventDefault(); return; }
+
+  const studentId = parseInt(seat.dataset.studentId);
+  if (!studentId) { e.preventDefault(); return; }
+
+  draggedStudentId = studentId;
+  seat.classList.add('dragging');
+  liveRoom.classList.add('drag-active');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(studentId));
+});
+
+liveRoom.addEventListener('dragend', e => {
+  const seat = e.target.closest('.live-seat');
+  if (seat) seat.classList.remove('dragging');
+  liveRoom.classList.remove('drag-active');
+  liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
+  draggedStudentId = null;
+});
+
+liveRoom.addEventListener('dragover', e => {
+  if (IS_PAST_SESSION || _sessionExpired) return;
+  const seat = e.target.closest('.live-seat:not(.inactive)');
+  if (!seat) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  seat.classList.add('drag-over');
+});
+
+liveRoom.addEventListener('dragleave', e => {
+  const seat = e.target.closest('.live-seat');
+  if (seat && !seat.contains(e.relatedTarget)) seat.classList.remove('drag-over');
+});
+
+liveRoom.addEventListener('drop', e => {
+  if (IS_PAST_SESSION || _sessionExpired) return;
+  const seat = e.target.closest('.live-seat:not(.inactive)');
+  if (!seat) return;
+
+  e.preventDefault();
+  seat.classList.remove('drag-over');
+  liveRoom.classList.remove('drag-active');
+
+  const studentId    = parseInt(e.dataTransfer.getData('text/plain'));
+  const targetSeatId = parseInt(seat.dataset.seatId);
+
+  if (!isNaN(studentId) && !isNaN(targetSeatId)) {
+    seat._dragJustHappened = true;
+    moveSeat(studentId, targetSeatId);
+  }
+});
+
+// Tactile — désactivée si séance passée
+const DRAG_THRESHOLD = 8;
+let touchClone = null;
+let touchStudId = null;
+let touchSrcEl = null;
+let touchStartX = 0;
+let touchStartY = 0;
+let touchOffX = 0;
+let touchOffY = 0;
+let touchIsDrag = false;
+
+liveRoom.addEventListener('touchstart', e => {
+  if (IS_PAST_SESSION || _sessionExpired) return;
+  if (e.target.closest('.tag-chip')) return;
+
+  const seat = e.target.closest('.live-seat.occupied');
+  if (!seat) return;
+
+  const t = e.touches[0];
+  touchStudId = parseInt(seat.dataset.studentId);
+  touchSrcEl = seat;
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+  touchIsDrag = false;
+
+  const rect = seat.getBoundingClientRect();
+  touchOffX = t.clientX - rect.left;
+  touchOffY = t.clientY - rect.top;
+}, { passive: true });
+
+liveRoom.addEventListener('touchmove', e => {
+  if (!touchSrcEl) return;
+
+  const t = e.touches[0];
+  const dx = t.clientX - touchStartX;
+  const dy = t.clientY - touchStartY;
+
+  if (!touchIsDrag && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+
+  if (!touchIsDrag) {
+    touchIsDrag = true;
+    liveRoom.classList.add('drag-active');
+    touchSrcEl.classList.add('dragging');
+
+    const rect = touchSrcEl.getBoundingClientRect();
+    touchClone = touchSrcEl.cloneNode(true);
+    Object.assign(touchClone.style, {
+      position: 'fixed',
+      left: rect.left + 'px',
+      top: rect.top + 'px',
+      width: rect.width + 'px',
+      height: rect.height + 'px',
+      opacity: '0.75',
+      pointerEvents: 'none',
+      zIndex: '9999',
+      boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+      borderRadius: 'var(--radius-lg)',
+      transform: 'scale(1.05)',
+      transition: 'none'
+    });
+    document.body.appendChild(touchClone);
+  }
+
+  e.preventDefault();
+  touchClone.style.left = (t.clientX - touchOffX) + 'px';
+  touchClone.style.top  = (t.clientY - touchOffY) + 'px';
+
+  liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
+  touchClone.style.display = 'none';
+  const under = document.elementFromPoint(t.clientX, t.clientY)?.closest('.live-seat:not(.inactive)');
+  touchClone.style.display = '';
+  if (under && under !== touchSrcEl) under.classList.add('drag-over');
+}, { passive: false });
+
+liveRoom.addEventListener('touchend', e => {
+  if (!touchSrcEl) return;
+
+  if (touchIsDrag && touchClone) {
+    const t = e.changedTouches[0];
+    touchClone.style.display = 'none';
+    const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.live-seat:not(.inactive)');
+
+    touchClone.remove();
+    touchClone = null;
+    touchSrcEl.classList.remove('dragging');
+    liveRoom.classList.remove('drag-active');
+    liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
+
+    if (!IS_PAST_SESSION && !_sessionExpired && target && target !== touchSrcEl && touchStudId !== null) {
+      const targetSeatId = parseInt(target.dataset.seatId);
+      if (!isNaN(targetSeatId)) {
+        target._dragJustHappened = true;
+        moveSeat(touchStudId, targetSeatId);
+      }
+    }
+  }
+
+  touchSrcEl = null;
+  touchStudId = null;
+  touchIsDrag = false;
+});
+
+liveRoom.addEventListener('touchcancel', () => {
+  if (touchClone) { touchClone.remove(); touchClone = null; }
+  if (touchSrcEl) touchSrcEl.classList.remove('dragging');
+  liveRoom.classList.remove('drag-active');
+  liveRoom.querySelectorAll('.drag-over').forEach(s => s.classList.remove('drag-over'));
+  touchSrcEl = null;
+  touchStudId = null;
+  touchIsDrag = false;
+});
+
+// ──────────────────────────────────────────────
+// SUPPRESSION DE LA SÉANCE
 // ──────────────────────────────────────────────
 const deleteSessionModal   = document.getElementById('deleteSessionModal');
 const btnDeleteSession     = document.getElementById('btnDeleteSession');
-const deleteSessionConfirm = document.getElementById('deleteSessionConfirm');
 const deleteSessionCancel  = document.getElementById('deleteSessionCancel');
+const deleteSessionConfirm = document.getElementById('deleteSessionConfirm');
 
 btnDeleteSession.addEventListener('click', () => {
   deleteSessionModal.hidden = false;
-  deleteSessionConfirm.focus();
+  deleteSessionCancel.focus();
 });
-deleteSessionCancel.addEventListener('click', () => { deleteSessionModal.hidden = true; });
-deleteSessionModal.addEventListener('click', e => { if (e.target === deleteSessionModal) deleteSessionModal.hidden = true; });
+
+deleteSessionCancel.addEventListener('click', () => {
+  deleteSessionModal.hidden = true;
+});
+
+deleteSessionModal.addEventListener('click', e => {
+  if (e.target === deleteSessionModal) deleteSessionModal.hidden = true;
+});
 
 deleteSessionConfirm.addEventListener('click', () => {
   deleteSessionConfirm.disabled = true;
+  deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Suppression…';
+
   apiFetch(`/api/sessions/${SESSION_ID}`, { method: 'DELETE' })
     .then(d => {
       if (d.ok) {
-        window.location.href = '<?= $backUrl ?>';
+        window.location.href = '<?= htmlspecialchars($backUrl) ?>';
       } else {
-        alert('Erreur lors de la suppression.');
+        alert('Erreur : ' + (d.error || 'Suppression échouée'));
         deleteSessionConfirm.disabled = false;
+        deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Oui, supprimer définitivement';
       }
     })
-    .catch(() => { deleteSessionConfirm.disabled = false; });
+    .catch(() => {
+      deleteSessionConfirm.disabled = false;
+      deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Oui, supprimer définitivement';
+    });
 });
 </script>
+
+
+<!-- Modale infos élève -->
+<div id="studentModal" class="student-modal-overlay" hidden
+     aria-modal="true" role="dialog" aria-labelledby="modalStudentName">
+  <div class="student-modal">
+    <button class="student-modal-close" id="modalClose" aria-label="Fermer">&#x2715;</button>
+    <div class="student-modal-header">
+      <div class="student-modal-avatar" id="modalAvatar"></div>
+      <div>
+        <div class="student-modal-name" id="modalStudentName"></div>
+        <div class="student-modal-class" id="modalClass"></div>
+      </div>
+    </div>
+    <div class="student-modal-body" id="modalBody">
+      <div class="student-modal-loading">Chargement&hellip;</div>
+    </div>
+    <div class="student-modal-footer">
+      <button class="btn btn-danger btn-sm" id="modalRemoveBtn">
+        &#128465; Retirer du plan de salle
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+window.SESSION_ID      = <?= (int)$session['id'] ?>;
+window.seatStudentMap  = seatStudentMap;
+</script>
+
+<?php
+$content = ob_get_clean();
+?>
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><?= htmlspecialchars($pageTitle) ?></title>
+<link rel="stylesheet" href="/css/app.css">
+<style>
+/* ── Navigation séance précédente / suivante ── */
+.live-date-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.live-date-label {
+  font-variant-numeric: tabular-nums;
+}
+.live-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition);
+  flex-shrink: 0;
+  position: relative;
+}
+a.live-nav-btn:hover {
+  background: var(--divider);
+  color: var(--primary);
+}
+.live-nav-btn--disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+/* Tooltip CSS natif enrichi */
+a.live-nav-btn::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text, #28251d);
+  color: var(--color-text-inverse, #f9f8f4);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 100;
+}
+a.live-nav-btn:hover::after,
+a.live-nav-btn:focus-visible::after {
+  opacity: 1;
+}
+
+/* ── Nom du plan (discret, italique) ── */
+.live-title-plan {
+  font-style: italic;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── Badge lecture seule ── */
+.badge-past {
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-full);
+  padding: 2px 8px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ── Bouton Supprimer la séance ── */
+.btn-delete-session {
+  margin-left: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* ── Bandeau séance passée ── */
+.past-session-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-warning-highlight, #ddcfc6);
+  color: var(--color-warning, #964219);
+  border-bottom: 1px solid oklch(from var(--color-warning, #964219) l c h / 0.2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+/* ── Plan de salle lecture seule ── */
+.live-room--readonly .live-seat.occupied {
+  cursor: default;
+  opacity: 0.88;
+}
+.live-room--readonly .live-seat.occupied:active {
+  transform: none;
+}
+
+/* ── Toast session expirée ── */
+.session-expired-toast {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  background: var(--color-surface, #fff);
+  border: 1.5px solid var(--color-warning, #964219);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px oklch(0.2 0.02 60 / 0.18);
+  padding: var(--space-4) var(--space-5);
+  z-index: 10000;
+  max-width: min(480px, calc(100vw - var(--space-8)));
+  animation: toastIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* CORRECTIF : [hidden] doit l'emporter sur display:flex */
+.session-expired-toast[hidden] {
+  display: none !important;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.session-expired-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+.session-expired-body {
+  flex: 1;
+  min-width: 0;
+}
+.session-expired-body strong {
+  display: block;
+  color: var(--color-warning, #964219);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-1);
+}
+.session-expired-body p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+/* Plan de salle grisé quand session expirée */
+.live-room.session-expired {
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.4);
+  transition: opacity 300ms ease, filter 300ms ease;
+}
+.skipped-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.skipped-list li {
+  background: var(--color-warning-highlight, #ddcfc6);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* ── Variante danger pour scope-btn (modale suppression) ── */
+.scope-btn--danger {
+  border-color: var(--color-error, #a12c7b);
+  color: var(--color-error, #a12c7b);
+}
+.scope-btn--danger:hover {
+  background: var(--color-error-highlight, #e0ced7);
+}
+</style>
+</head>
+<body class="live-body">
+<?= $content ?>
+<script src="/js/app.js"></script>
+</body>
+</html>
