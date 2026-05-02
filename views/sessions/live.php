@@ -1198,7 +1198,7 @@ deleteSessionConfirm.addEventListener('click', () => {
 </div>
 
 <script>
-window.SESSION_ID      = <?= (int)$session['id'] ?>;
+// NOTE : SESSION_ID et seatStudentMap sont déjà définis dans le bloc <script> précédent.
 window.seatStudentMap  = seatStudentMap;
 
 // ──────────────────────────────────────────────
@@ -1297,7 +1297,7 @@ function startCropFromExistingPhoto(studentId) {
  *
  * Si cropData est fourni (résultat de GET /api/students/{id}/photo-crop),
  * la sélection est pré-positionnée sur le recadrage existant.
- * Sinon, on place un carré centré de 60% de la dimension minimale.
+ * Sinon, on place un carré centré de 80% de la dimension minimale.
  *
  * @param {HTMLImageElement} img
  * @param {object|null} cropData  { crop_x, crop_y, crop_w, crop_h } ou null
@@ -1553,7 +1553,7 @@ cropSaveBtn.addEventListener('click', () => {
     renderPhotoTab(_modalStudentId);
   })
   .catch(err => {
-    alert('Erreur lors de l\'enregistrement du recadrage :\n' + err.message);
+    alert('Erreur lors de l\'enregistrement du recadrage :\n' + err.message);
   })
   .finally(() => {
     cropSaveBtn.disabled = false;
@@ -1569,68 +1569,6 @@ cropCancelBtn.addEventListener('click', () => {
   modalPhotoHint.textContent      = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
   _cropImage = null;
   _dragMode  = null;
-});
-
-// ── Bouton Recadrer & enregistrer ──
-cropSaveBtn.addEventListener('click', () => {
-  if (!_cropImage || !_modalStudentId) return;
-
-  // Convertir les coordonnées affichées en coordonnées réelles (image originale)
-  const realX = Math.round(_sel.x / _cropScale);
-  const realY = Math.round(_sel.y / _cropScale);
-  const realW = Math.round(_sel.w / _cropScale);
-  const realH = Math.round(_sel.h / _cropScale);
-
-  // Dessiner le crop dans un canvas temporaire aux dimensions réelles
-  const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width  = realW;
-  tmpCanvas.height = realH;
-  const ctx = tmpCanvas.getContext('2d');
-  ctx.drawImage(_cropImage, realX, realY, realW, realH, 0, 0, realW, realH);
-
-  // Exporter en JPEG base64 (qualité 0.92)
-  const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.92);
-
-  // Envoi au serveur
-  cropSaveBtn.disabled    = true;
-  cropSaveBtn.textContent = 'Enregistrement…';
-  modalPhotoHint.textContent = 'Envoi en cours…';
-
-  apiFetch('/api/students/' + _modalStudentId + '/photo-crop', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ dataUrl })
-  })
-  .then(d => {
-    if (d.ok) {
-      modalPhotoHint.textContent = 'Photo recadrée et enregistrée !';
-      // Cacher le crop, afficher la nouvelle photo
-      cropContainer.style.display     = 'none';
-      modalPhotoPreview.style.display = '';
-      photoMainActions.style.display  = '';
-      _cropImage = null;
-      renderPhotoTab(_modalStudentId);
-      // Rafraîchir l'avatar en-tête de la modale
-      const av = document.createElement('img');
-      av.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now();
-      av.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
-      av.onerror = () => { modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase(); };
-      modalAvatar.innerHTML = ''; modalAvatar.appendChild(av);
-      // Rafraîchir la vignette dans le plan de salle
-      const seatEl = getSeatEl(_modalSeatId);
-      if (seatEl) {
-        const si = seatEl.querySelector('.seat-photo');
-        if (si) { si.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now(); }
-      }
-    } else {
-      modalPhotoHint.textContent = d.error || 'Erreur lors de l\'enregistrement.';
-    }
-  })
-  .catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; })
-  .finally(() => {
-    cropSaveBtn.disabled    = false;
-    cropSaveBtn.textContent = '✓ Recadrer & enregistrer';
-  });
 });
 
 let _modalStudentId = null;
@@ -1845,13 +1783,14 @@ function renderPhotoTab(studentId) {
 }
 
 /**
- * Supprime la photo d'un élève et rafraîchit l'UI.
+ * Supprime la photo d'un élève via apiFetch (détection session expirée incluse)
+ * et rafraîchit l'UI.
  * @param {number} studentId
  */
 function _handlePhotoDelete(studentId) {
   if (!confirm('Supprimer la photo ?')) return;
-  fetch('/api/students/' + studentId + '/photo', { method: 'DELETE' })
-    .then(r => r.json()).then(d => {
+  apiFetch('/api/students/' + studentId + '/photo', { method: 'DELETE' })
+    .then(d => {
       modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
       if (d.ok) {
         renderPhotoTab(studentId);
@@ -1894,4 +1833,3 @@ liveRoom.querySelectorAll('.seat-photo').forEach(img => {
 });
 
 </script>
-
