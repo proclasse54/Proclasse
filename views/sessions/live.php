@@ -1570,4 +1570,328 @@ cropCancelBtn.addEventListener('click', () => {
   _cropImage = null;
   _dragMode  = null;
 });
+
+// ── Bouton Recadrer & enregistrer ──
+cropSaveBtn.addEventListener('click', () => {
+  if (!_cropImage || !_modalStudentId) return;
+
+  // Convertir les coordonnées affichées en coordonnées réelles (image originale)
+  const realX = Math.round(_sel.x / _cropScale);
+  const realY = Math.round(_sel.y / _cropScale);
+  const realW = Math.round(_sel.w / _cropScale);
+  const realH = Math.round(_sel.h / _cropScale);
+
+  // Dessiner le crop dans un canvas temporaire aux dimensions réelles
+  const tmpCanvas = document.createElement('canvas');
+  tmpCanvas.width  = realW;
+  tmpCanvas.height = realH;
+  const ctx = tmpCanvas.getContext('2d');
+  ctx.drawImage(_cropImage, realX, realY, realW, realH, 0, 0, realW, realH);
+
+  // Exporter en JPEG base64 (qualité 0.92)
+  const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.92);
+
+  // Envoi au serveur
+  cropSaveBtn.disabled    = true;
+  cropSaveBtn.textContent = 'Enregistrement…';
+  modalPhotoHint.textContent = 'Envoi en cours…';
+
+  apiFetch('/api/students/' + _modalStudentId + '/photo-crop', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ dataUrl })
+  })
+  .then(d => {
+    if (d.ok) {
+      modalPhotoHint.textContent = 'Photo recadrée et enregistrée !';
+      // Cacher le crop, afficher la nouvelle photo
+      cropContainer.style.display     = 'none';
+      modalPhotoPreview.style.display = '';
+      photoMainActions.style.display  = '';
+      _cropImage = null;
+      renderPhotoTab(_modalStudentId);
+      // Rafraîchir l'avatar en-tête de la modale
+      const av = document.createElement('img');
+      av.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now();
+      av.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
+      av.onerror = () => { modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase(); };
+      modalAvatar.innerHTML = ''; modalAvatar.appendChild(av);
+      // Rafraîchir la vignette dans le plan de salle
+      const seatEl = getSeatEl(_modalSeatId);
+      if (seatEl) {
+        const si = seatEl.querySelector('.seat-photo');
+        if (si) { si.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now(); }
+      }
+    } else {
+      modalPhotoHint.textContent = d.error || 'Erreur lors de l\'enregistrement.';
+    }
+  })
+  .catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; })
+  .finally(() => {
+    cropSaveBtn.disabled    = false;
+    cropSaveBtn.textContent = '✓ Recadrer & enregistrer';
+  });
+});
+
+let _modalStudentId = null;
+let _modalSeatId    = null;
+
+function openStudentModal(studentId, seatId, studentName) {
+  _modalStudentId = studentId;
+  _modalSeatId    = seatId;
+
+  switchTab('donnees');
+
+  // Avatar
+  const img = document.createElement('img');
+  img.src = '/photo?student_id=' + studentId;
+  img.alt = studentName;
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
+  img.onerror = () => {
+    modalAvatar.innerHTML = studentName.split(' ').map(p => p[0] || '').join('').substring(0, 2).toUpperCase();
+  };
+  modalAvatar.innerHTML = '';
+  modalAvatar.appendChild(img);
+
+  modalName.textContent  = studentName;
+  modalClass.textContent = '';
+  modalBody.innerHTML    = '<div class="student-modal-loading">Chargement…</div>';
+  studentModal.hidden    = false;
+  modalClose.focus();
+
+  // Bouton retirer : masqué en lecture seule
+  modalRemoveBtn.style.display = IS_PAST_SESSION ? 'none' : '';
+
+  // Chargement données élève
+  apiFetch(`/api/students/${studentId}/summary?session_id=${SESSION_ID}`)
+    .then(data => {
+      if (data.class_name) modalClass.textContent = data.class_name;
+      renderModalBody(data);
+    })
+    .catch(() => {
+      modalBody.innerHTML = '<p style="color:var(--color-error)">Impossible de charger la fiche.</p>';
+    });
+}
+
+function renderModalBody(data) {
+  const obs = data.observations || [];
+  const history = data.history || [];
+
+  let html = '';
+
+  // Observations de la séance en cours
+  if (obs.length) {
+    html += `<div class="modal-section"><h4>Tags de cette séance</h4><div class="modal-tags">`;
+    obs.forEach(o => {
+      html += `<span class="tag-chip" style="background:${o.color || '#888'}">${(o.icon ? o.icon + ' ' : '') + (o.tag || '')}</span>`;
+    });
+    html += `</div></div>`;
+  } else {
+    html += `<div class="modal-section"><p class="text-muted text-sm">Aucun tag pour cette séance.</p></div>`;
+  }
+
+  // Historique des observations récentes
+  if (history.length) {
+    html += `<div class="modal-section"><h4>Historique récent</h4><ul class="modal-history">`;
+    history.forEach(h => {
+      const date = new Date(h.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+      html += `<li><span class="modal-history-date">${date}</span>
+               <span class="tag-chip" style="background:${h.color || '#888'}">${(h.icon ? h.icon + ' ' : '') + (h.tag || '')}</span></li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  modalBody.innerHTML = html || '<p class="text-muted text-sm">Aucune donnée disponible.</p>';
+}
+
+function closeStudentModal() {
+  // Réinitialiser le crop si en cours
+  cropContainer.style.display     = 'none';
+  modalPhotoPreview.style.display = '';
+  photoMainActions.style.display  = '';
+  _cropImage = null;
+  modalPhotoInput.value = '';
+
+  studentModal.hidden = true;
+  _modalStudentId = null;
+  _modalSeatId    = null;
+}
+
+// Double-clic sur une vignette occupée → ouvre la fiche élève
+liveRoom.addEventListener('dblclick', e => {
+  if (e.target.closest('.tag-chip')) return;
+  const seat = e.target.closest('.live-seat.occupied');
+  if (!seat || !seat.dataset.studentId) return;
+  e.preventDefault();
+  openStudentModal(
+    parseInt(seat.dataset.studentId),
+    parseInt(seat.dataset.seatId),
+    seat.dataset.studentName
+  );
+});
+
+// Fermeture modale élève
+modalClose.addEventListener('click', closeStudentModal);
+studentModal.addEventListener('click', e => { if (e.target === studentModal) closeStudentModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !studentModal.hidden) {
+    e.stopImmediatePropagation();
+    closeStudentModal();
+  }
+});
+
+// Bouton "Retirer du plan de salle"
+modalRemoveBtn.addEventListener('click', () => {
+  if (!_modalStudentId || !_modalSeatId || IS_PAST_SESSION) return;
+
+  modalRemoveBtn.disabled = true;
+  modalRemoveBtn.textContent = 'Retrait en cours…';
+
+  apiFetch(`/api/sessions/${SESSION_ID}/remove-student`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ student_id: _modalStudentId, seat_id: _modalSeatId })
+  })
+  .then(d => {
+    if (!d.ok) throw new Error(d.error || 'Erreur');
+    // Mise à jour UI optimiste
+    const seatEl = getSeatEl(_modalSeatId);
+    if (seatEl) {
+      setSeatEmpty(seatEl);
+      seatStudentMap[_modalSeatId] = null;
+    }
+    closeStudentModal();
+  })
+  .catch(err => {
+    alert('Impossible de retirer l\'élève : ' + err.message);
+    modalRemoveBtn.disabled = false;
+    modalRemoveBtn.textContent = '\ud83d\uddd1 Retirer du plan de salle';
+  });
+});
+
+
+// ── Onglets ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.student-modal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  modalBody.hidden       = (name !== 'donnees');
+  modalPhotoPanel.hidden = (name !== 'photo');
+}
+document.querySelectorAll('.student-modal-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    switchTab(btn.dataset.tab);
+    if (btn.dataset.tab === 'photo' && _modalStudentId) renderPhotoTab(_modalStudentId);
+  });
+});
+
+// ── Onglet Photo ─────────────────────────────────────────────────────────────
+/**
+ * Construit dynamiquement l'onglet Photo :
+ * - Affiche la photo existante (ou un placeholder si aucune)
+ * - Si une photo existe : bouton ✂️ Modifier le cadrage + 📷 Choisir une photo + 🗑 Supprimer
+ * - Si aucune photo      : bouton 📷 Choisir une photo uniquement
+ */
+function renderPhotoTab(studentId) {
+  modalPhotoPreview.innerHTML = '';
+  modalPhotoHint.textContent  = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
+
+  // ── Prévisualisation ──
+  const img = document.createElement('img');
+  img.alt = 'Photo élève';
+  img.style.cssText = 'max-width:160px;max-height:160px;border-radius:var(--radius-md);object-fit:cover;';
+
+  img.onload = () => {
+    // Photo présente → afficher aussi le bouton Modifier le cadrage
+    photoMainActions.innerHTML = `
+      <button type="button" class="btn btn-secondary btn-sm" id="btnCropExisting">✂️ Modifier le cadrage</button>
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        📷 Choisir une photo
+        <span id="fakePhotoTrigger" style="display:none;"></span>
+      </label>
+      <button type="button" class="btn btn-danger btn-sm" id="btnDeletePhoto">🗑 Supprimer</button>
+    `;
+    // Bouton Modifier le cadrage → charge la photo existante dans le crop
+    document.getElementById('btnCropExisting').addEventListener('click', () => {
+      startCropFromExistingPhoto(studentId);
+    });
+    // Label "Choisir une photo" → déclenche l'input file
+    photoMainActions.querySelector('label').addEventListener('click', () => {
+      modalPhotoInput.value = '';
+      modalPhotoInput.click();
+    });
+    // Bouton Supprimer
+    document.getElementById('btnDeletePhoto').addEventListener('click', () => {
+      _handlePhotoDelete(studentId);
+    });
+  };
+
+  img.onerror = () => {
+    // Pas de photo → afficher un placeholder et uniquement le bouton Choisir
+    modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>';
+    photoMainActions.innerHTML = `
+      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
+        📷 Choisir une photo
+        <span id="fakePhotoTrigger" style="display:none;"></span>
+      </label>
+    `;
+    photoMainActions.querySelector('label').addEventListener('click', () => {
+      modalPhotoInput.value = '';
+      modalPhotoInput.click();
+    });
+  };
+
+  // Cache-busting pour forcer l'affichage de la dernière version
+  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+  modalPhotoPreview.appendChild(img);
+}
+
+/**
+ * Supprime la photo d'un élève et rafraîchit l'UI.
+ * @param {number} studentId
+ */
+function _handlePhotoDelete(studentId) {
+  if (!confirm('Supprimer la photo ?')) return;
+  fetch('/api/students/' + studentId + '/photo', { method: 'DELETE' })
+    .then(r => r.json()).then(d => {
+      modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
+      if (d.ok) {
+        renderPhotoTab(studentId);
+        // Vider l'avatar en-tête de la modale
+        modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase();
+        // Masquer la photo dans la vignette siège
+        const seatEl = getSeatEl(_modalSeatId);
+        if (seatEl) {
+          const si = seatEl.querySelector('.seat-photo');
+          if (si) { si.style.display='none'; if(si.nextElementSibling) si.nextElementSibling.style.display='flex'; }
+        }
+      }
+    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
+}
+
+// Sélection d'un fichier → lancer le mode crop (au lieu d'uploader directement)
+modalPhotoInput.addEventListener('change', () => {
+  const file = modalPhotoInput.files[0];
+  if (!file || !_modalStudentId) return;
+  if (file.size > 2097152) { modalPhotoHint.textContent = 'Fichier trop lourd (max 2 Mo).'; return; }
+  // Lancer l'interface de recadrage
+  initCrop(file);
+});
+
+// ── Fallback robuste pour les photos de vignettes ────────────────────────────────────────
+liveRoom.querySelectorAll('.seat-photo').forEach(img => {
+  img.addEventListener('error', () => {
+    img.style.display = 'none';
+    const wrapper = img.closest('.seat-photo-wrapper');
+    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
+    if (placeholder) placeholder.style.display = 'flex';
+  });
+
+  img.addEventListener('load', () => {
+    img.style.display = '';
+    const wrapper = img.closest('.seat-photo-wrapper');
+    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
+    if (placeholder) placeholder.style.display = 'none';
+  });
+});
+
 </script>
+
