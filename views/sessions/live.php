@@ -809,7 +809,7 @@ deleteSessionConfirm.addEventListener('click', () => {
   deleteSessionConfirm.disabled = true;
   deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Suppression…';
 
-  apiFetch(`/sessions/${SESSION_ID}`, { method: 'DELETE' })
+  apiFetch(`/api/sessions/${SESSION_ID}`, { method: 'DELETE' })
     .then(d => {
       if (d.ok) {
         window.location.href = '<?= htmlspecialchars($backUrl) ?>';
