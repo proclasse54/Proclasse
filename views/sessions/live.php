@@ -359,8 +359,7 @@ a.live-nav-btn:focus-visible::after {
                 <div class="seat-photo-wrapper">
                   <img src="<?= htmlspecialchars($photoUrl) ?>"
                       alt="<?= htmlspecialchars($seat['first_name'] . ' ' . $seat['last_name']) ?>"
-                      class="seat-photo" loading="lazy"
-                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                      class="seat-photo" loading="lazy">
                   <div class="seat-photo-placeholder" style="display:none;">
                     <?= htmlspecialchars(mb_strtoupper(mb_substr($seat['first_name'], 0, 1) . mb_substr($seat['last_name'], 0, 1))) ?>
                   </div>
@@ -591,8 +590,7 @@ async function apiFetch(url, options = {}) {
     data = await r.json();
   } catch (_) {
     if (!r.ok) {
-      showSessionExpiredToast();
-      throw new Error('Session expirée');
+      throw new Error(`Erreur HTTP ${r.status}`);
     }
     throw new Error(`Réponse invalide du serveur (${r.status})`);
   }
@@ -1112,7 +1110,7 @@ function openStudentModal(studentId, seatId, studentName) {
   _modalSeatId    = seatId;
 
   switchTab('donnees');
-  
+
   // Avatar
   const img = document.createElement('img');
   img.src = '/photo?student_id=' + studentId;
@@ -1300,5 +1298,21 @@ modalPhotoDeleteBtn.addEventListener('click', () => {
     }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
 });
 
+// ── Fallback robuste pour les photos de vignettes ───────────────────────────
+liveRoom.querySelectorAll('.seat-photo').forEach(img => {
+  img.addEventListener('error', () => {
+    img.style.display = 'none';
+    const wrapper = img.closest('.seat-photo-wrapper');
+    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
+    if (placeholder) placeholder.style.display = 'flex';
+  });
+
+  img.addEventListener('load', () => {
+    img.style.display = '';
+    const wrapper = img.closest('.seat-photo-wrapper');
+    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
+    if (placeholder) placeholder.style.display = 'none';
+  });
+});
 
 </script>

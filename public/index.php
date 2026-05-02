@@ -128,20 +128,26 @@ $router->add('DELETE', '/api/tags/{id}',                                     fn(
 
 // Infos élève (modale live)
 $router->add('GET',    '/api/students/{id}',                                 fn($p)=> (new StudentController)->apiGet($p));
+$router->add('GET',    '/api/students/{id}/summary',                         fn($p)=> (new StudentController)->apiSummary($p));
 $router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}',     fn($p)=> (new SessionController)->apiRemoveStudent($p));
+// Onglets fiche élève
+$router->add('POST',   '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiUploadPhoto($p));
+$router->add('DELETE', '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiDeletePhoto($p));
+
 
 // Imports
-$router->add('GET',     '/import',                          fn($p) => (new ImportController)->index($p));
-$router->add('POST',    '/import/photos',                   fn($p) => (new ImportController)->photos($p));
+$router->add('GET',     '/import',                                           fn($p) => (new ImportController)->index($p));
+$router->add('POST',    '/import/photos',                                    fn($p) => (new ImportController)->photos($p));
 
-// Photos élèves
-$router->add('GET',     '/photo',                           fn() => (new PhotoController)->serve());
+// Photos élèves                       
+$router->add('GET',     '/photo',                                            fn() => (new PhotoController)->serve());
 
-// Racine
-$router->add('GET',     '/',                                fn()  => Response::redirect('/sessions'));
+// Racine                      
+$router->add('GET',     '/',                                                 fn()  => Response::redirect('/sessions'));
 
-// Tags
-$router->add('GET',    '/tags',                             fn()  => (new SessionController)->tagsIndex());
+// Tags                    
+$router->add('GET',    '/tags',                                              fn()  => (new SessionController)->tagsIndex());
+
 
 // ── Dispatch ───────────────────────────────────────────────
 $router->dispatch($method, $uri);
