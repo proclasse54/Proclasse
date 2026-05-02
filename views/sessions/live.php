@@ -1244,7 +1244,7 @@ const CANVAS_MAX_H = 340;
 
 /**
  * Charge une image (File) dans le canvas de crop et initialise la sélection.
- * Récupère d'abord le crop existant en BDD pour pré-positionner le cadre.
+ * Nouvelle photo uploadée : pas de crop existant en BDD — on place le carré par défaut.
  * @param {File} file
  */
 function initCrop(file) {
@@ -1261,22 +1261,25 @@ function initCrop(file) {
 }
 
 /**
- * Charge la photo existante d'un élève (depuis /photo?student_id=...) dans
- * le canvas de crop. Récupère simultanément le crop BDD pour pré-positionner
- * le cadre sur le recadrage déjà enregistré.
+ * Charge la photo ORIGINALE (sans recadrage) d'un élève dans le canvas de crop.
+ * Récupère simultanément le crop BDD pour pré-positionner le cadre sur le
+ * recadrage déjà enregistré, permettant à l'utilisateur de le visualiser et
+ * de l'ajuster sur l'image complète.
  * @param {number} studentId
  */
 function startCropFromExistingPhoto(studentId) {
   modalPhotoHint.textContent = 'Chargement de la photo…';
 
-  // Chargement en parallèle : image + paramètres crop BDD
+  // Chargement en parallèle : image ORIGINALE + paramètres crop BDD
   const imgPromise = new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous'; // nécessaire pour toDataURL sur le canvas
     img.onload  = () => resolve(img);
     img.onerror = () => reject(new Error('Impossible de charger la photo existante.'));
-    // Cache-busting pour forcer le rechargement de la dernière version
-    img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+    // On charge la photo ORIGINALE (sans recadrage) via ?original=1
+    // pour que le canvas affiche l'image complète et que le cadre de sélection
+    // représente fidèlement la zone recadrée enregistrée en BDD.
+    img.src = '/photo?student_id=' + studentId + '&original=1&t=' + Date.now();
   });
 
   const cropPromise = apiFetch('/api/students/' + studentId + '/photo-crop')
@@ -1747,7 +1750,7 @@ function renderPhotoTab(studentId) {
       </label>
       <button type="button" class="btn btn-danger btn-sm" id="btnDeletePhoto">🗑 Supprimer</button>
     `;
-    // Bouton Modifier le cadrage → charge la photo existante dans le crop
+    // Bouton Modifier le cadrage → charge la photo originale dans le crop
     document.getElementById('btnCropExisting').addEventListener('click', () => {
       startCropFromExistingPhoto(studentId);
     });
