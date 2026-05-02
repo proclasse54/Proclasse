@@ -1302,6 +1302,11 @@ function startCropFromExistingPhoto(studentId) {
  * la sélection est pré-positionnée sur le recadrage existant.
  * Sinon, on place un carré centré de 80% de la dimension minimale.
  *
+ * CORRECTIF POSITIONNEMENT : cropContainer est rendu visible AVANT d'appeler
+ * renderSelection(), puis renderSelection() est différé via requestAnimationFrame
+ * pour que le navigateur ait calculé le layout et que cropCanvas.offsetWidth
+ * retourne les dimensions CSS réelles (et non 0).
+ *
  * @param {HTMLImageElement} img
  * @param {object|null} cropData  { crop_x, crop_y, crop_w, crop_h } ou null
  */
@@ -1340,21 +1345,34 @@ function _loadImageIntoCrop(img, cropData) {
       h: side
     };
   }
-  renderSelection();
 
   // Afficher la zone de crop, masquer la prévisualisation et les boutons principaux
+  // IMPORTANT : rendre cropContainer visible AVANT renderSelection() pour que
+  // le navigateur calcule les dimensions CSS réelles du canvas.
   modalPhotoPreview.style.display  = 'none';
   photoMainActions.style.display   = 'none';
   cropContainer.style.display      = 'block';
   modalPhotoHint.textContent        = 'Déplacez et redimensionnez le cadre, puis cliquez sur « Recadrer & enregistrer ».';
+
+  // Différer renderSelection() via requestAnimationFrame : le navigateur a ainsi
+  // le temps de calculer le layout et cropCanvas.offsetWidth retourne la bonne valeur.
+  requestAnimationFrame(() => renderSelection());
 }
 
-/** Met à jour la position CSS de l'overlay de sélection */
-
+/**
+ * Met à jour la position CSS de l'overlay de sélection.
+ *
+ * CORRECTIF : utilise cropCanvas.offsetWidth / offsetHeight (dimensions CSS réelles
+ * de l'élément dans le DOM) au lieu de getBoundingClientRect() qui peut retourner
+ * des valeurs incorrectes si le canvas n'est pas encore visible lors de l'appel initial.
+ */
 function renderSelection() {
-  const rect   = cropCanvas.getBoundingClientRect();
-  const scaleX = rect.width  / cropCanvas.width;
-  const scaleY = rect.height / cropCanvas.height;
+  const cssW = cropCanvas.offsetWidth;
+  const cssH = cropCanvas.offsetHeight;
+  // Si le canvas n'est pas encore visible (offsetWidth === 0), ne rien faire
+  if (!cssW || !cssH) return;
+  const scaleX = cssW / cropCanvas.width;
+  const scaleY = cssH / cropCanvas.height;
   cropSelection.style.left   = (_sel.x * scaleX) + 'px';
   cropSelection.style.top    = (_sel.y * scaleY) + 'px';
   cropSelection.style.width  = (_sel.w * scaleX) + 'px';
@@ -1364,7 +1382,11 @@ function renderSelection() {
 /** Clamp un nombre entre min et max */
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-/** Obtenir les coordonnées souris/tactile relatives au canvas */
+/**
+ * Obtenir les coordonnées souris/tactile relatives au canvas.
+ * Utilise getBoundingClientRect() ici (correct car appelé lors d'un événement
+ * interactif, donc le canvas est forcément visible et son layout est stable).
+ */
 function getPos(e) {
   const rect = cropCanvas.getBoundingClientRect();
   const src  = e.touches ? e.touches[0] : e;
