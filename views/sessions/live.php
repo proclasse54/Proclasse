@@ -16,7 +16,7 @@ for ($r = 0; $r < $session['room_rows']; $r++) {
 $obsMap = [];
 foreach ($observations as $o) { $obsMap[$o['student_id']][] = $o; }
 
-// ── Séance passée ? (date strictement < aujourd'hui) ────────────────────────────────────
+// ── Séance passée ? (date strictement < aujourd'hui) ──────────────────────────────────────────────
 $isPast = strtotime($session['date']) < strtotime(date('Y-m-d'));
 
 // URLs séance précédente / suivante (conserve from_week si présent)
@@ -1244,7 +1244,7 @@ const CANVAS_MAX_H = 340;
 
 /**
  * Charge une image (File) dans le canvas de crop et initialise la sélection.
- * Appelée quand l'utilisateur choisit un nouveau fichier.
+ * Récupère d'abord le crop existant en BDD pour pré-positionner le cadre.
  * @param {File} file
  */
 function initCrop(file) {
@@ -1252,7 +1252,8 @@ function initCrop(file) {
   reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      _loadImageIntoCrop(img);
+      // Nouvelle photo : pas de crop existant en BDD — on place le carré par défaut
+      _loadImageIntoCrop(img, null);
     };
     img.src = ev.target.result;
   };
@@ -1261,29 +1262,47 @@ function initCrop(file) {
 
 /**
  * Charge la photo existante d'un élève (depuis /photo?student_id=...) dans
- * le canvas de crop. Permet de recadrer une photo déjà enregistrée.
+ * le canvas de crop. Récupère simultanément le crop BDD pour pré-positionner
+ * le cadre sur le recadrage déjà enregistré.
  * @param {number} studentId
  */
 function startCropFromExistingPhoto(studentId) {
   modalPhotoHint.textContent = 'Chargement de la photo…';
-  const img = new Image();
-  img.crossOrigin = 'anonymous'; // nécessaire pour toDataURL sur le canvas
-  img.onload = () => {
-    _loadImageIntoCrop(img);
-  };
-  img.onerror = () => {
-    modalPhotoHint.textContent = 'Impossible de charger la photo existante.';
-  };
-  // Cache-busting pour forcer le rechargement de la dernière version
-  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+
+  // Chargement en parallèle : image + paramètres crop BDD
+  const imgPromise = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous'; // nécessaire pour toDataURL sur le canvas
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('Impossible de charger la photo existante.'));
+    // Cache-busting pour forcer le rechargement de la dernière version
+    img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
+  });
+
+  const cropPromise = apiFetch('/api/students/' + studentId + '/photo-crop')
+    .catch(() => null); // En cas d'erreur API on continue sans crop pré-positionné
+
+  Promise.all([imgPromise, cropPromise])
+    .then(([img, cropData]) => {
+      _loadImageIntoCrop(img, cropData);
+    })
+    .catch(err => {
+      modalPhotoHint.textContent = err.message || 'Impossible de charger la photo existante.';
+    });
 }
 
 /**
  * Logique commune : prend un HTMLImageElement déjà chargé,
  * l'affiche dans le canvas et initialise la sélection de crop.
+ *
+ * Si cropData est fourni (résultat de GET /api/students/{id}/photo-crop),
+ * la sélection est pré-positionnée sur le recadrage existant.
+ * Sinon, on place un carré centré de 60% de la dimension minimale.
+ *
  * @param {HTMLImageElement} img
+ * @param {object|null} cropData  { crop_x, crop_y, crop_w, crop_h } ou null
  */
-function _loadImageIntoCrop(img) {
+function _loadImageIntoCrop(img, cropData) {
   _cropImage = img;
 
   // Calculer l'échelle pour faire tenir l'image dans CANVAS_MAX
@@ -1299,14 +1318,25 @@ function _loadImageIntoCrop(img) {
   ctx.clearRect(0, 0, dw, dh);
   ctx.drawImage(img, 0, 0, dw, dh);
 
-  // Sélection initiale : carré centré de 80 % de la dimension minimale
-  const side = Math.round(Math.min(dw, dh) * 0.8);
-  _sel = {
-    x: Math.round((dw - side) / 2),
-    y: Math.round((dh - side) / 2),
-    w: side,
-    h: side
-  };
+  if (cropData && cropData.crop_x !== undefined) {
+    // Pré-positionner la sélection sur le crop enregistré en BDD
+    // Les coordonnées BDD sont proportionnelles (0→1), on les convertit en pixels canvas
+    _sel = {
+      x: Math.round(cropData.crop_x * dw),
+      y: Math.round(cropData.crop_y * dh),
+      w: Math.round(cropData.crop_w * dw),
+      h: Math.round(cropData.crop_h * dh),
+    };
+  } else {
+    // Aucun crop enregistré : sélection initiale carré centré de 80% de la dimension minimale
+    const side = Math.round(Math.min(dw, dh) * 0.8);
+    _sel = {
+      x: Math.round((dw - side) / 2),
+      y: Math.round((dh - side) / 2),
+      w: side,
+      h: side
+    };
+  }
   renderSelection();
 
   // Afficher la zone de crop, masquer la prévisualisation et les boutons principaux
@@ -1358,108 +1388,120 @@ function hitHandle(px, py) {
   return null;
 }
 
-// ── Événements souris sur la zone de crop ──
+// ── Événements souris sur le canvas de crop ──
 cropArea.addEventListener('mousedown', e => {
   if (!_cropImage) return;
+  const { x, y } = getPos(e);
+  const handle = hitHandle(x, y);
+  if (handle) {
+    _dragMode  = handle;
+  } else if (inSelection(x, y)) {
+    _dragMode  = 'move';
+  } else {
+    // Nouvelle sélection par tiré
+    _dragMode  = 'new';
+    _sel = { x, y, w: 0, h: 0 };
+  }
+  _dragStart = { mx: x, my: y, sx: _sel.x, sy: _sel.y, sw: _sel.w, sh: _sel.h };
   e.preventDefault();
-  const p = getPos(e);
-  const handle = hitHandle(p.x, p.y);
-  _dragMode  = handle || (inSelection(p.x, p.y) ? 'move' : null);
-  _dragStart = { mx: p.x, my: p.y, sx: _sel.x, sy: _sel.y, sw: _sel.w, sh: _sel.h };
-  if (_dragMode) cropArea.style.cursor = _dragMode === 'move' ? 'grabbing' : _dragMode + '-resize';
 });
 
 document.addEventListener('mousemove', e => {
-  if (!_dragMode) return;
-  const p   = getPos(e);
-  const dx  = p.x - _dragStart.mx;
-  const dy  = p.y - _dragStart.my;
-  const cw  = cropCanvas.width;
-  const ch  = cropCanvas.height;
-  const MIN = 40; // taille minimale de sélection en px
+  if (!_dragMode || !_cropImage) return;
+  const { x, y } = getPos(e);
+  const dx = x - _dragStart.mx;
+  const dy = y - _dragStart.my;
+  const W  = cropCanvas.width;
+  const H  = cropCanvas.height;
 
   if (_dragMode === 'move') {
-    _sel.x = clamp(_dragStart.sx + dx, 0, cw - _sel.w);
-    _sel.y = clamp(_dragStart.sy + dy, 0, ch - _sel.h);
+    _sel.x = clamp(_dragStart.sx + dx, 0, W - _sel.w);
+    _sel.y = clamp(_dragStart.sy + dy, 0, H - _sel.h);
+  } else if (_dragMode === 'new') {
+    const x0 = Math.min(_dragStart.mx, x);
+    const y0 = Math.min(_dragStart.my, y);
+    const x1 = Math.max(_dragStart.mx, x);
+    const y1 = Math.max(_dragStart.my, y);
+    _sel = {
+      x: clamp(x0, 0, W), y: clamp(y0, 0, H),
+      w: clamp(x1 - x0, 0, W - clamp(x0, 0, W)),
+      h: clamp(y1 - y0, 0, H - clamp(y0, 0, H)),
+    };
   } else {
-    // Redimensionnement selon la poignée active
+    // Redimensionnement par poignée
     let { sx, sy, sw, sh } = _dragStart;
-    if (_dragMode === 'br') {
-      _sel.w = clamp(sw + dx, MIN, cw - _dragStart.sx);
-      _sel.h = clamp(sh + dy, MIN, ch - _dragStart.sy);
-    } else if (_dragMode === 'tl') {
-      const nw = clamp(sw - dx, MIN, _dragStart.sx + sw);
-      const nh = clamp(sh - dy, MIN, _dragStart.sy + sh);
-      _sel.x = _dragStart.sx + sw - nw;
-      _sel.y = _dragStart.sy + sh - nh;
-      _sel.w = nw;
-      _sel.h = nh;
+    if (_dragMode === 'tl') {
+      const nx = clamp(sx + dx, 0, sx + sw - 10);
+      const ny = clamp(sy + dy, 0, sy + sh - 10);
+      _sel = { x: nx, y: ny, w: sx + sw - nx, h: sy + sh - ny };
     } else if (_dragMode === 'tr') {
-      _sel.w = clamp(sw + dx, MIN, cw - _dragStart.sx);
-      const nh = clamp(sh - dy, MIN, _dragStart.sy + sh);
-      _sel.y = _dragStart.sy + sh - nh;
-      _sel.h = nh;
+      const ny = clamp(sy + dy, 0, sy + sh - 10);
+      _sel = { x: sx, y: ny, w: clamp(sw + dx, 10, W - sx), h: sy + sh - ny };
     } else if (_dragMode === 'bl') {
-      const nw = clamp(sw - dx, MIN, _dragStart.sx + sw);
-      _sel.x = _dragStart.sx + sw - nw;
-      _sel.w = nw;
-      _sel.h = clamp(sh + dy, MIN, ch - _dragStart.sy);
+      const nx = clamp(sx + dx, 0, sx + sw - 10);
+      _sel = { x: nx, y: sy, w: sx + sw - nx, h: clamp(sh + dy, 10, H - sy) };
+    } else if (_dragMode === 'br') {
+      _sel = { x: sx, y: sy, w: clamp(sw + dx, 10, W - sx), h: clamp(sh + dy, 10, H - sy) };
     }
   }
   renderSelection();
 });
 
-document.addEventListener('mouseup', () => {
-  _dragMode = null;
-  if (cropArea) cropArea.style.cursor = 'crosshair';
-});
+document.addEventListener('mouseup', () => { _dragMode = null; });
 
-// ── Support tactile sur la zone de crop ──
+// ── Événements tactiles sur le canvas de crop ──
 cropArea.addEventListener('touchstart', e => {
   if (!_cropImage) return;
   e.preventDefault();
-  const p = getPos(e);
-  const handle = hitHandle(p.x, p.y);
-  _dragMode  = handle || (inSelection(p.x, p.y) ? 'move' : null);
-  _dragStart = { mx: p.x, my: p.y, sx: _sel.x, sy: _sel.y, sw: _sel.w, sh: _sel.h };
+  const { x, y } = getPos(e);
+  const handle = hitHandle(x, y);
+  if (handle) {
+    _dragMode = handle;
+  } else if (inSelection(x, y)) {
+    _dragMode = 'move';
+  } else {
+    _dragMode = 'new';
+    _sel = { x, y, w: 0, h: 0 };
+  }
+  _dragStart = { mx: x, my: y, sx: _sel.x, sy: _sel.y, sw: _sel.w, sh: _sel.h };
 }, { passive: false });
 
 cropArea.addEventListener('touchmove', e => {
-  if (!_dragMode) return;
+  if (!_dragMode || !_cropImage) return;
   e.preventDefault();
-  // Réutiliser la logique mousemove en passant l'événement directement
-  const p   = getPos(e);
-  const dx  = p.x - _dragStart.mx;
-  const dy  = p.y - _dragStart.my;
-  const cw  = cropCanvas.width;
-  const ch  = cropCanvas.height;
-  const MIN = 40;
+  const { x, y } = getPos(e);
+  const dx = x - _dragStart.mx;
+  const dy = y - _dragStart.my;
+  const W  = cropCanvas.width;
+  const H  = cropCanvas.height;
 
   if (_dragMode === 'move') {
-    _sel.x = clamp(_dragStart.sx + dx, 0, cw - _sel.w);
-    _sel.y = clamp(_dragStart.sy + dy, 0, ch - _sel.h);
+    _sel.x = clamp(_dragStart.sx + dx, 0, W - _sel.w);
+    _sel.y = clamp(_dragStart.sy + dy, 0, H - _sel.h);
+  } else if (_dragMode === 'new') {
+    const x0 = Math.min(_dragStart.mx, x);
+    const y0 = Math.min(_dragStart.my, y);
+    const x1 = Math.max(_dragStart.mx, x);
+    const y1 = Math.max(_dragStart.my, y);
+    _sel = {
+      x: clamp(x0, 0, W), y: clamp(y0, 0, H),
+      w: clamp(x1 - x0, 0, W - clamp(x0, 0, W)),
+      h: clamp(y1 - y0, 0, H - clamp(y0, 0, H)),
+    };
   } else {
     let { sx, sy, sw, sh } = _dragStart;
-    if (_dragMode === 'br') {
-      _sel.w = clamp(sw + dx, MIN, cw - _dragStart.sx);
-      _sel.h = clamp(sh + dy, MIN, ch - _dragStart.sy);
-    } else if (_dragMode === 'tl') {
-      const nw = clamp(sw - dx, MIN, _dragStart.sx + sw);
-      const nh = clamp(sh - dy, MIN, _dragStart.sy + sh);
-      _sel.x = _dragStart.sx + sw - nw;
-      _sel.y = _dragStart.sy + sh - nh;
-      _sel.w = nw;
-      _sel.h = nh;
+    if (_dragMode === 'tl') {
+      const nx = clamp(sx + dx, 0, sx + sw - 10);
+      const ny = clamp(sy + dy, 0, sy + sh - 10);
+      _sel = { x: nx, y: ny, w: sx + sw - nx, h: sy + sh - ny };
     } else if (_dragMode === 'tr') {
-      _sel.w = clamp(sw + dx, MIN, cw - _dragStart.sx);
-      const nh = clamp(sh - dy, MIN, _dragStart.sy + sh);
-      _sel.y = _dragStart.sy + sh - nh;
-      _sel.h = nh;
+      const ny = clamp(sy + dy, 0, sy + sh - 10);
+      _sel = { x: sx, y: ny, w: clamp(sw + dx, 10, W - sx), h: sy + sh - ny };
     } else if (_dragMode === 'bl') {
-      const nw = clamp(sw - dx, MIN, _dragStart.sx + sw);
-      _sel.x = _dragStart.sx + sw - nw;
-      _sel.w = nw;
-      _sel.h = clamp(sh + dy, MIN, ch - _dragStart.sy);
+      const nx = clamp(sx + dx, 0, sx + sw - 10);
+      _sel = { x: nx, y: sy, w: sx + sw - nx, h: clamp(sh + dy, 10, H - sy) };
+    } else if (_dragMode === 'br') {
+      _sel = { x: sx, y: sy, w: clamp(sw + dx, 10, W - sx), h: clamp(sh + dy, 10, H - sy) };
     }
   }
   renderSelection();
@@ -1467,336 +1509,65 @@ cropArea.addEventListener('touchmove', e => {
 
 cropArea.addEventListener('touchend', () => { _dragMode = null; });
 
-// ── Bouton Annuler crop ──
-cropCancelBtn.addEventListener('click', () => {
-  cropContainer.style.display     = 'none';
-  modalPhotoPreview.style.display = '';
-  photoMainActions.style.display  = '';
-  modalPhotoHint.textContent      = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
-  modalPhotoInput.value           = ''; // reset input file
-  _cropImage = null;
-});
-
-// ── Bouton Recadrer & enregistrer ──
+// ──────────────────────────────────────────────
+// Bouton "Recadrer & enregistrer"
+// Envoie uniquement les coordonnées proportionnelles en BDD.
+// Ne touche PAS au fichier photo sur le serveur.
+// Le recadrage est appliqué à la volée par PhotoController via getCropSettings().
+// ──────────────────────────────────────────────
 cropSaveBtn.addEventListener('click', () => {
-  if (!_cropImage || !_modalStudentId) return;
+  if (!_cropImage || _sel.w < 2 || _sel.h < 2) return;
 
-  // Convertir les coordonnées affichées en coordonnées réelles (image originale)
-  const realX = Math.round(_sel.x / _cropScale);
-  const realY = Math.round(_sel.y / _cropScale);
-  const realW = Math.round(_sel.w / _cropScale);
-  const realH = Math.round(_sel.h / _cropScale);
+  // Convertir les coordonnées pixels canvas en proportions (0 → 1) par rapport à l'image réelle.
+  // _cropScale = facteur canvas/réel, donc on divise par les dimensions du canvas.
+  const W = cropCanvas.width;
+  const H = cropCanvas.height;
+  const crop_x = _sel.x / W;
+  const crop_y = _sel.y / H;
+  const crop_w = _sel.w / W;
+  const crop_h = _sel.h / H;
 
-  // Dessiner le crop dans un canvas temporaire aux dimensions réelles
-  const tmpCanvas = document.createElement('canvas');
-  tmpCanvas.width  = realW;
-  tmpCanvas.height = realH;
-  const ctx = tmpCanvas.getContext('2d');
-  ctx.drawImage(_cropImage, realX, realY, realW, realH, 0, 0, realW, realH);
-
-  // Exporter en JPEG base64 (qualité 0.92)
-  const dataUrl = tmpCanvas.toDataURL('image/jpeg', 0.92);
-
-  // Envoi au serveur
-  cropSaveBtn.disabled    = true;
+  cropSaveBtn.disabled = true;
   cropSaveBtn.textContent = 'Enregistrement…';
-  modalPhotoHint.textContent = 'Envoi en cours…';
 
   apiFetch('/api/students/' + _modalStudentId + '/photo-crop', {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ dataUrl })
+    body: JSON.stringify({ crop_x, crop_y, crop_w, crop_h }),
   })
   .then(d => {
-    if (d.ok) {
-      modalPhotoHint.textContent = 'Photo recadrée et enregistrée !';
-      // Cacher le crop, afficher la nouvelle photo
-      cropContainer.style.display     = 'none';
-      modalPhotoPreview.style.display = '';
-      photoMainActions.style.display  = '';
-      _cropImage = null;
-      renderPhotoTab(_modalStudentId);
-      // Rafraîchir l'avatar en-tête de la modale
-      const av = document.createElement('img');
-      av.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now();
-      av.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
-      av.onerror = () => { modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase(); };
-      modalAvatar.innerHTML = ''; modalAvatar.appendChild(av);
-      // Rafraîchir la vignette dans le plan de salle
-      const seatEl = getSeatEl(_modalSeatId);
-      if (seatEl) {
-        const si = seatEl.querySelector('.seat-photo');
-        if (si) { si.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now(); }
-      }
-    } else {
-      modalPhotoHint.textContent = d.error || 'Erreur lors de l\'enregistrement.';
-    }
+    if (!d.ok) throw new Error(d.error || 'Erreur inconnue');
+
+    // Fermer le mode crop et rafraîchir la prévisualisation
+    cropContainer.style.display    = 'none';
+    photoMainActions.style.display = '';
+    modalPhotoHint.textContent     = 'Recadrage enregistré. La vignette sera mise à jour au prochain rechargement.';
+
+    // Rafraîchir l'image miniature dans la vignette du plan de salle (cache-busting)
+    const seatImgs = liveRoom.querySelectorAll(`[data-student-id="${_modalStudentId}"] .seat-photo`);
+    seatImgs.forEach(img => {
+      img.src = '/photo?student_id=' + _modalStudentId + '&t=' + Date.now();
+    });
+
+    // Rafraîchir l'aperçu dans la modale
+    renderPhotoTab(_modalStudentId);
   })
-  .catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; })
+  .catch(err => {
+    alert('Erreur lors de l\'enregistrement du recadrage :\n' + err.message);
+  })
   .finally(() => {
-    cropSaveBtn.disabled    = false;
+    cropSaveBtn.disabled = false;
     cropSaveBtn.textContent = '✓ Recadrer & enregistrer';
   });
 });
 
-let _modalStudentId = null;
-let _modalSeatId    = null;
-
-function openStudentModal(studentId, seatId, studentName) {
-  _modalStudentId = studentId;
-  _modalSeatId    = seatId;
-
-  switchTab('donnees');
-
-  // Avatar
-  const img = document.createElement('img');
-  img.src = '/photo?student_id=' + studentId;
-  img.alt = studentName;
-  img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
-  img.onerror = () => {
-    modalAvatar.innerHTML = studentName.split(' ').map(p => p[0] || '').join('').substring(0, 2).toUpperCase();
-  };
-  modalAvatar.innerHTML = '';
-  modalAvatar.appendChild(img);
-
-  modalName.textContent  = studentName;
-  modalClass.textContent = '';
-  modalBody.innerHTML    = '<div class="student-modal-loading">Chargement…</div>';
-  studentModal.hidden    = false;
-  modalClose.focus();
-
-  // Bouton retirer : masqué en lecture seule
-  modalRemoveBtn.style.display = IS_PAST_SESSION ? 'none' : '';
-
-  // Chargement données élève
-  apiFetch(`/api/students/${studentId}/summary?session_id=${SESSION_ID}`)
-    .then(data => {
-      if (data.class_name) modalClass.textContent = data.class_name;
-      renderModalBody(data);
-    })
-    .catch(() => {
-      modalBody.innerHTML = '<p style="color:var(--color-error)">Impossible de charger la fiche.</p>';
-    });
-}
-
-function renderModalBody(data) {
-  const obs = data.observations || [];
-  const history = data.history || [];
-
-  let html = '';
-
-  // Observations de la séance en cours
-  if (obs.length) {
-    html += `<div class="modal-section"><h4>Tags de cette séance</h4><div class="modal-tags">`;
-    obs.forEach(o => {
-      html += `<span class="tag-chip" style="background:${o.color || '#888'}">${(o.icon ? o.icon + ' ' : '') + (o.tag || '')}</span>`;
-    });
-    html += `</div></div>`;
-  } else {
-    html += `<div class="modal-section"><p class="text-muted text-sm">Aucun tag pour cette séance.</p></div>`;
-  }
-
-  // Historique des observations récentes
-  if (history.length) {
-    html += `<div class="modal-section"><h4>Historique récent</h4><ul class="modal-history">`;
-    history.forEach(h => {
-      const date = new Date(h.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-      html += `<li><span class="modal-history-date">${date}</span>
-               <span class="tag-chip" style="background:${h.color || '#888'}">${(h.icon ? h.icon + ' ' : '') + (h.tag || '')}</span></li>`;
-    });
-    html += `</ul></div>`;
-  }
-
-  modalBody.innerHTML = html || '<p class="text-muted text-sm">Aucune donnée disponible.</p>';
-}
-
-function closeStudentModal() {
-  // Réinitialiser le crop si en cours
-  cropContainer.style.display     = 'none';
+// ── Bouton Annuler le crop ──
+cropCancelBtn.addEventListener('click', () => {
+  cropContainer.style.display    = 'none';
   modalPhotoPreview.style.display = '';
   photoMainActions.style.display  = '';
+  modalPhotoHint.textContent      = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
   _cropImage = null;
-  modalPhotoInput.value = '';
-
-  studentModal.hidden = true;
-  _modalStudentId = null;
-  _modalSeatId    = null;
-}
-
-// Double-clic sur une vignette occupée → ouvre la fiche élève
-liveRoom.addEventListener('dblclick', e => {
-  if (e.target.closest('.tag-chip')) return;
-  const seat = e.target.closest('.live-seat.occupied');
-  if (!seat || !seat.dataset.studentId) return;
-  e.preventDefault();
-  openStudentModal(
-    parseInt(seat.dataset.studentId),
-    parseInt(seat.dataset.seatId),
-    seat.dataset.studentName
-  );
+  _dragMode  = null;
 });
-
-// Fermeture modale élève
-modalClose.addEventListener('click', closeStudentModal);
-studentModal.addEventListener('click', e => { if (e.target === studentModal) closeStudentModal(); });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !studentModal.hidden) {
-    e.stopImmediatePropagation();
-    closeStudentModal();
-  }
-});
-
-// Bouton "Retirer du plan de salle"
-modalRemoveBtn.addEventListener('click', () => {
-  if (!_modalStudentId || !_modalSeatId || IS_PAST_SESSION) return;
-
-  modalRemoveBtn.disabled = true;
-  modalRemoveBtn.textContent = 'Retrait en cours…';
-
-  apiFetch(`/api/sessions/${SESSION_ID}/remove-student`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ student_id: _modalStudentId, seat_id: _modalSeatId })
-  })
-  .then(d => {
-    if (!d.ok) throw new Error(d.error || 'Erreur');
-    // Mise à jour UI optimiste
-    const seatEl = getSeatEl(_modalSeatId);
-    if (seatEl) {
-      setSeatEmpty(seatEl);
-      seatStudentMap[_modalSeatId] = null;
-    }
-    closeStudentModal();
-  })
-  .catch(err => {
-    alert('Impossible de retirer l\'élève : ' + err.message);
-    modalRemoveBtn.disabled = false;
-    modalRemoveBtn.textContent = '\ud83d\uddd1 Retirer du plan de salle';
-  });
-});
-
-
-// ── Onglets ─────────────────────────────────────────────────────────────
-function switchTab(name) {
-  document.querySelectorAll('.student-modal-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  modalBody.hidden       = (name !== 'donnees');
-  modalPhotoPanel.hidden = (name !== 'photo');
-}
-document.querySelectorAll('.student-modal-tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    switchTab(btn.dataset.tab);
-    if (btn.dataset.tab === 'photo' && _modalStudentId) renderPhotoTab(_modalStudentId);
-  });
-});
-
-// ── Onglet Photo ─────────────────────────────────────────────────────────────
-/**
- * Construit dynamiquement l'onglet Photo :
- * - Affiche la photo existante (ou un placeholder si aucune)
- * - Si une photo existe : bouton ✂️ Modifier le cadrage + 📷 Choisir une photo + 🗑 Supprimer
- * - Si aucune photo      : bouton 📷 Choisir une photo uniquement
- */
-function renderPhotoTab(studentId) {
-  modalPhotoPreview.innerHTML = '';
-  modalPhotoHint.textContent  = 'Formats : JPG, PNG, WEBP. Max 2 Mo.';
-
-  // ── Prévisualisation ──
-  const img = document.createElement('img');
-  img.alt = 'Photo élève';
-  img.style.cssText = 'max-width:160px;max-height:160px;border-radius:var(--radius-md);object-fit:cover;';
-
-  img.onload = () => {
-    // Photo présente → afficher aussi le bouton Modifier le cadrage
-    photoMainActions.innerHTML = `
-      <button type="button" class="btn btn-secondary btn-sm" id="btnCropExisting">✂️ Modifier le cadrage</button>
-      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
-        📷 Choisir une photo
-        <span id="fakePhotoTrigger" style="display:none;"></span>
-      </label>
-      <button type="button" class="btn btn-danger btn-sm" id="btnDeletePhoto">🗑 Supprimer</button>
-    `;
-    // Bouton Modifier le cadrage → charge la photo existante dans le crop
-    document.getElementById('btnCropExisting').addEventListener('click', () => {
-      startCropFromExistingPhoto(studentId);
-    });
-    // Label "Choisir une photo" → déclenche l'input file
-    photoMainActions.querySelector('label').addEventListener('click', () => {
-      modalPhotoInput.value = '';
-      modalPhotoInput.click();
-    });
-    // Bouton Supprimer
-    document.getElementById('btnDeletePhoto').addEventListener('click', () => {
-      _handlePhotoDelete(studentId);
-    });
-  };
-
-  img.onerror = () => {
-    // Pas de photo → afficher un placeholder et uniquement le bouton Choisir
-    modalPhotoPreview.innerHTML = '<div class="modal-photo-empty">Aucune photo</div>';
-    photoMainActions.innerHTML = `
-      <label class="btn btn-ghost btn-sm" style="cursor:pointer;">
-        📷 Choisir une photo
-        <span id="fakePhotoTrigger" style="display:none;"></span>
-      </label>
-    `;
-    photoMainActions.querySelector('label').addEventListener('click', () => {
-      modalPhotoInput.value = '';
-      modalPhotoInput.click();
-    });
-  };
-
-  // Cache-busting pour forcer l'affichage de la dernière version
-  img.src = '/photo?student_id=' + studentId + '&t=' + Date.now();
-  modalPhotoPreview.appendChild(img);
-}
-
-/**
- * Supprime la photo d'un élève et rafraîchit l'UI.
- * @param {number} studentId
- */
-function _handlePhotoDelete(studentId) {
-  if (!confirm('Supprimer la photo ?')) return;
-  fetch('/api/students/' + studentId + '/photo', { method: 'DELETE' })
-    .then(r => r.json()).then(d => {
-      modalPhotoHint.textContent = d.ok ? 'Photo supprimée.' : (d.error || 'Erreur.');
-      if (d.ok) {
-        renderPhotoTab(studentId);
-        // Vider l'avatar en-tête de la modale
-        modalAvatar.innerHTML = modalName.textContent.split(' ').map(p=>p[0]||'').join('').substring(0,2).toUpperCase();
-        // Masquer la photo dans la vignette siège
-        const seatEl = getSeatEl(_modalSeatId);
-        if (seatEl) {
-          const si = seatEl.querySelector('.seat-photo');
-          if (si) { si.style.display='none'; if(si.nextElementSibling) si.nextElementSibling.style.display='flex'; }
-        }
-      }
-    }).catch(() => { modalPhotoHint.textContent = 'Erreur réseau.'; });
-}
-
-// Sélection d'un fichier → lancer le mode crop (au lieu d'uploader directement)
-modalPhotoInput.addEventListener('change', () => {
-  const file = modalPhotoInput.files[0];
-  if (!file || !_modalStudentId) return;
-  if (file.size > 2097152) { modalPhotoHint.textContent = 'Fichier trop lourd (max 2 Mo).'; return; }
-  // Lancer l'interface de recadrage
-  initCrop(file);
-});
-
-// ── Fallback robuste pour les photos de vignettes ────────────────────────────────────────
-liveRoom.querySelectorAll('.seat-photo').forEach(img => {
-  img.addEventListener('error', () => {
-    img.style.display = 'none';
-    const wrapper = img.closest('.seat-photo-wrapper');
-    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
-    if (placeholder) placeholder.style.display = 'flex';
-  });
-
-  img.addEventListener('load', () => {
-    img.style.display = '';
-    const wrapper = img.closest('.seat-photo-wrapper');
-    const placeholder = wrapper ? wrapper.querySelector('.seat-photo-placeholder') : null;
-    if (placeholder) placeholder.style.display = 'none';
-  });
-});
-
 </script>
