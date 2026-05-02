@@ -1069,7 +1069,142 @@ deleteSessionConfirm.addEventListener('click', () => {
 <script>
 window.SESSION_ID      = <?= (int)$session['id'] ?>;
 window.seatStudentMap  = seatStudentMap;
-</script>
 
-<?php
-include __DIR__ . '/../layouts/app.php';
+// ──────────────────────────────────────────────
+// MODALE FICHE ÉLÈVE (double-clic sur vignette)
+// ──────────────────────────────────────────────
+const studentModal  = document.getElementById('studentModal');
+const modalClose    = document.getElementById('modalClose');
+const modalAvatar   = document.getElementById('modalAvatar');
+const modalName     = document.getElementById('modalStudentName');
+const modalClass    = document.getElementById('modalClass');
+const modalBody     = document.getElementById('modalBody');
+const modalRemoveBtn = document.getElementById('modalRemoveBtn');
+
+let _modalStudentId = null;
+let _modalSeatId    = null;
+
+function openStudentModal(studentId, seatId, studentName) {
+  _modalStudentId = studentId;
+  _modalSeatId    = seatId;
+
+  // Avatar
+  const img = document.createElement('img');
+  img.src = '/photo?student_id=' + studentId;
+  img.alt = studentName;
+  img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;';
+  img.onerror = () => {
+    modalAvatar.innerHTML = studentName.split(' ').map(p => p[0] || '').join('').substring(0, 2).toUpperCase();
+  };
+  modalAvatar.innerHTML = '';
+  modalAvatar.appendChild(img);
+
+  modalName.textContent  = studentName;
+  modalClass.textContent = '';
+  modalBody.innerHTML    = '<div class="student-modal-loading">Chargement…</div>';
+  studentModal.hidden    = false;
+  modalClose.focus();
+
+  // Bouton retirer : masqué en lecture seule
+  modalRemoveBtn.style.display = IS_PAST_SESSION ? 'none' : '';
+
+  // Chargement données élève
+  apiFetch(`/api/students/${studentId}/summary?session_id=${SESSION_ID}`)
+    .then(data => {
+      if (data.class_name) modalClass.textContent = data.class_name;
+      renderModalBody(data);
+    })
+    .catch(() => {
+      modalBody.innerHTML = '<p style="color:var(--color-error)">Impossible de charger la fiche.</p>';
+    });
+}
+
+function renderModalBody(data) {
+  const obs = data.observations || [];
+  const history = data.history || [];
+
+  let html = '';
+
+  // Observations de la séance en cours
+  if (obs.length) {
+    html += `<div class="modal-section"><h4>Tags de cette séance</h4><div class="modal-tags">`;
+    obs.forEach(o => {
+      html += `<span class="tag-chip" style="background:${o.color || '#888'}">${(o.icon ? o.icon + ' ' : '') + (o.tag || '')}</span>`;
+    });
+    html += `</div></div>`;
+  } else {
+    html += `<div class="modal-section"><p class="text-muted text-sm">Aucun tag pour cette séance.</p></div>`;
+  }
+
+  // Historique des observations récentes
+  if (history.length) {
+    html += `<div class="modal-section"><h4>Historique récent</h4><ul class="modal-history">`;
+    history.forEach(h => {
+      const date = new Date(h.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+      html += `<li><span class="modal-history-date">${date}</span>
+               <span class="tag-chip" style="background:${h.color || '#888'}">${(h.icon ? h.icon + ' ' : '') + (h.tag || '')}</span></li>`;
+    });
+    html += `</ul></div>`;
+  }
+
+  modalBody.innerHTML = html || '<p class="text-muted text-sm">Aucune donnée disponible.</p>';
+}
+
+function closeStudentModal() {
+  studentModal.hidden = true;
+  _modalStudentId = null;
+  _modalSeatId    = null;
+}
+
+// Double-clic sur une vignette occupée → ouvre la fiche élève
+liveRoom.addEventListener('dblclick', e => {
+  if (e.target.closest('.tag-chip')) return;
+  const seat = e.target.closest('.live-seat.occupied');
+  if (!seat || !seat.dataset.studentId) return;
+  e.preventDefault();
+  openStudentModal(
+    parseInt(seat.dataset.studentId),
+    parseInt(seat.dataset.seatId),
+    seat.dataset.studentName
+  );
+});
+
+// Fermeture modale élève
+modalClose.addEventListener('click', closeStudentModal);
+studentModal.addEventListener('click', e => { if (e.target === studentModal) closeStudentModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !studentModal.hidden) {
+    e.stopImmediatePropagation();
+    closeStudentModal();
+  }
+});
+
+// Bouton "Retirer du plan de salle"
+modalRemoveBtn.addEventListener('click', () => {
+  if (!_modalStudentId || !_modalSeatId || IS_PAST_SESSION) return;
+
+  modalRemoveBtn.disabled = true;
+  modalRemoveBtn.textContent = 'Retrait en cours…';
+
+  apiFetch(`/api/sessions/${SESSION_ID}/remove-student`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ student_id: _modalStudentId, seat_id: _modalSeatId })
+  })
+  .then(d => {
+    if (!d.ok) throw new Error(d.error || 'Erreur');
+    // Mise à jour UI optimiste
+    const seatEl = getSeatEl(_modalSeatId);
+    if (seatEl) {
+      setSeatEmpty(seatEl);
+      seatStudentMap[_modalSeatId] = null;
+    }
+    closeStudentModal();
+  })
+  .catch(err => {
+    alert('Impossible de retirer l\'élève : ' + err.message);
+    modalRemoveBtn.disabled = false;
+    modalRemoveBtn.textContent = '🗑 Retirer du plan de salle';
+  });
+});
+</script>
