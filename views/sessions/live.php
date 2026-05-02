@@ -92,6 +92,11 @@ ob_start();
       🔒 Lecture seule
     </span>
     <?php endif; ?>
+
+    <!-- Bouton Supprimer la séance -->
+    <button type="button" id="btnDeleteSession" class="btn btn-danger btn-sm btn-delete-session" title="Supprimer cette séance">
+      🗑 Supprimer
+    </button>
   </div>
 </div>
 
@@ -228,6 +233,30 @@ ob_start();
     <button id="skippedClose" class="scope-btn scope-btn--primary" type="button" style="margin-top:var(--space-4)">
       Compris
     </button>
+  </div>
+</div>
+
+<!-- ================================================
+     MODALE CONFIRMATION SUPPRESSION SÉANCE
+     ================================================ -->
+<div id="deleteSessionModal" class="scope-modal" role="dialog" aria-modal="true" aria-labelledby="deleteSessionModalTitle" hidden>
+  <div class="scope-modal-box">
+    <p class="scope-modal-title" id="deleteSessionModalTitle">🗑 Supprimer la séance</p>
+    <p class="scope-modal-subtitle">
+      Êtes-vous sûr de vouloir supprimer la séance du
+      <strong><?= date('d/m/Y', strtotime($session['date'])) ?></strong>
+      pour la classe <strong><?= htmlspecialchars($session['class_name']) ?></strong> ?<br>
+      <span style="color:var(--color-error);font-size:var(--text-sm)">
+        Cette action supprimera aussi toutes les observations enregistrées. Elle est irréversible.
+      </span>
+    </p>
+    <div class="scope-modal-btns">
+      <button id="deleteSessionConfirm" class="scope-btn scope-btn--danger" type="button">
+        <span class="scope-btn-icon">🗑</span>
+        <span class="scope-btn-label">Oui, supprimer définitivement</span>
+      </button>
+    </div>
+    <button id="deleteSessionCancel" class="scope-cancel-btn" type="button">✕ Annuler</button>
   </div>
 </div>
 
@@ -457,10 +486,13 @@ document.getElementById('scopeBtnForward').addEventListener('click', () => scope
 document.getElementById('scopeBtnCancel').addEventListener('click',  () => scopeResolve(null));
 
 scopeModal.addEventListener('click', e => { if (e.target === scopeModal) scopeResolve(null); });
+
+// Escape : gère toutes les modales (scope, skipped, suppression)
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (!scopeModal.hidden)   { e.stopImmediatePropagation(); scopeResolve(null); }
-    if (!skippedModal.hidden) { e.stopImmediatePropagation(); skippedModal.hidden = true; }
+    if (!scopeModal.hidden)         { e.stopImmediatePropagation(); scopeResolve(null); }
+    if (!skippedModal.hidden)       { e.stopImmediatePropagation(); skippedModal.hidden = true; }
+    if (!deleteSessionModal.hidden) { e.stopImmediatePropagation(); deleteSessionModal.hidden = true; }
   }
 });
 
@@ -751,6 +783,47 @@ liveRoom.addEventListener('touchcancel', () => {
   touchStudId = null;
   touchIsDrag = false;
 });
+
+// ──────────────────────────────────────────────
+// SUPPRESSION DE LA SÉANCE
+// ──────────────────────────────────────────────
+const deleteSessionModal   = document.getElementById('deleteSessionModal');
+const btnDeleteSession     = document.getElementById('btnDeleteSession');
+const deleteSessionCancel  = document.getElementById('deleteSessionCancel');
+const deleteSessionConfirm = document.getElementById('deleteSessionConfirm');
+
+btnDeleteSession.addEventListener('click', () => {
+  deleteSessionModal.hidden = false;
+  deleteSessionCancel.focus();
+});
+
+deleteSessionCancel.addEventListener('click', () => {
+  deleteSessionModal.hidden = true;
+});
+
+deleteSessionModal.addEventListener('click', e => {
+  if (e.target === deleteSessionModal) deleteSessionModal.hidden = true;
+});
+
+deleteSessionConfirm.addEventListener('click', () => {
+  deleteSessionConfirm.disabled = true;
+  deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Suppression…';
+
+  apiFetch(`/sessions/${SESSION_ID}`, { method: 'DELETE' })
+    .then(d => {
+      if (d.ok) {
+        window.location.href = '<?= htmlspecialchars($backUrl) ?>';
+      } else {
+        alert('Erreur : ' + (d.error || 'Suppression échouée'));
+        deleteSessionConfirm.disabled = false;
+        deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Oui, supprimer définitivement';
+      }
+    })
+    .catch(() => {
+      deleteSessionConfirm.disabled = false;
+      deleteSessionConfirm.querySelector('.scope-btn-label').textContent = 'Oui, supprimer définitivement';
+    });
+});
 </script>
 
 
@@ -868,6 +941,12 @@ a.live-nav-btn:focus-visible::after {
   vertical-align: middle;
 }
 
+/* ── Bouton Supprimer la séance ── */
+.btn-delete-session {
+  margin-left: var(--space-2);
+  flex-shrink: 0;
+}
+
 /* ── Bandeau séance passée ── */
 .past-session-banner {
   display: flex;
@@ -958,6 +1037,15 @@ a.live-nav-btn:focus-visible::after {
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
   color: var(--color-text);
+}
+
+/* ── Variante danger pour scope-btn (modale suppression) ── */
+.scope-btn--danger {
+  border-color: var(--color-error, #a12c7b);
+  color: var(--color-error, #a12c7b);
+}
+.scope-btn--danger:hover {
+  background: var(--color-error-highlight, #e0ced7);
 }
 </style>
 </head>
