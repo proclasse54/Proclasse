@@ -105,11 +105,63 @@ class StudentController
     }
 
     /**
-     * apiSaveCrop : reçoit une image recadrée en base64 (data URI),
-     * la décode et l'enregistre en JPEG à la place de la photo existante.
+     * apiGetCrop : retourne les paramètres de recadrage actuels de l'élève
+     * (depuis photo_crop_settings, scope='student').
+     * Si aucun crop spécifique n'existe pour cet élève, retourne les valeurs
+     * par défaut (carré central de 60%).
      *
-     * Body JSON attendu : { "dataUrl": "data:image/jpeg;base64,..." }
-     * Taille max décodée : 2 Mo.
+     * Réponse JSON : { crop_x, crop_y, crop_w, crop_h, has_custom_crop }
+     */
+    public function apiGetCrop(array $p): void
+    {
+        $studentId = (int)$p['id'];
+        $db = Database::get();
+
+        // Vérifier que l'élève existe et récupérer sa classe
+        $stmt = $db->prepare("SELECT s.class_id FROM students s WHERE s.id = ?");
+        $stmt->execute([$studentId]);
+        $student = $stmt->fetch();
+        if (!$student) { Response::json(['error' => 'Élève introuvable'], 404); return; }
+
+        // Chercher un crop spécifique à cet élève
+        $stmtCrop = $db->prepare("
+            SELECT crop_x, crop_y, crop_w, crop_h
+            FROM photo_crop_settings
+            WHERE scope = 'student' AND scope_id = ?
+        ");
+        $stmtCrop->execute([$studentId]);
+        $crop = $stmtCrop->fetch();
+
+        if ($crop) {
+            Response::json([
+                'crop_x'          => (float)$crop['crop_x'],
+                'crop_y'          => (float)$crop['crop_y'],
+                'crop_w'          => (float)$crop['crop_w'],
+                'crop_h'          => (float)$crop['crop_h'],
+                'has_custom_crop' => true,
+            ]);
+        } else {
+            // Aucun crop personnalisé : on retourne les valeurs de repli
+            // (identiques à celles de getCropSettings dans Photos.php)
+            Response::json([
+                'crop_x'          => 0.20,
+                'crop_y'          => 0.20,
+                'crop_w'          => 0.60,
+                'crop_h'          => 0.60,
+                'has_custom_crop' => false,
+            ]);
+        }
+    }
+
+    /**
+     * apiSaveCrop : enregistre les paramètres de recadrage dans la table
+     * photo_crop_settings (scope='student') SANS toucher au fichier photo.
+     *
+     * Le recadrage est appliqué à la volée par PhotoController->serve()
+     * via getCropSettings() + rognerPortrait().
+     *
+     * Body JSON attendu : { "crop_x": 0.1, "crop_y": 0.05, "crop_w": 0.8, "crop_h": 0.9 }
+     * Toutes les valeurs sont des flottants entre 0 et 1 (proportions de l'image).
      */
     public function apiSaveCrop(array $p): void
     {
@@ -117,49 +169,48 @@ class StudentController
         $db = Database::get();
 
         // Vérifier que l'élève existe
-        $stmt = $db->prepare("SELECT s.last_name, s.first_name, c.name AS class_name FROM students s JOIN classes c ON c.id = s.class_id WHERE s.id = ?");
+        $stmt = $db->prepare("SELECT id FROM students WHERE id = ?");
         $stmt->execute([$studentId]);
-        $student = $stmt->fetch();
-        if (!$student) { Response::json(['error' => 'Élève introuvable'], 404); return; }
+        if (!$stmt->fetch()) { Response::json(['error' => 'Élève introuvable'], 404); return; }
 
         // Lire le body JSON
-        $body = json_decode(file_get_contents('php://input'), true);
-        $dataUrl = $body['dataUrl'] ?? '';
+        $body  = json_decode(file_get_contents('php://input'), true);
+        $crop_x = isset($body['crop_x']) ? (float)$body['crop_x'] : null;
+        $crop_y = isset($body['crop_y']) ? (float)$body['crop_y'] : null;
+        $crop_w = isset($body['crop_w']) ? (float)$body['crop_w'] : null;
+        $crop_h = isset($body['crop_h']) ? (float)$body['crop_h'] : null;
 
-        // Valider le format data URI
-        if (!preg_match('/^data:image\/(jpeg|png|webp);base64,(.+)$/s', $dataUrl, $matches)) {
-            Response::json(['error' => 'Format dataUrl invalide'], 400); return;
+        // Validation : toutes les valeurs doivent être présentes et dans [0, 1]
+        foreach (['crop_x' => $crop_x, 'crop_y' => $crop_y, 'crop_w' => $crop_w, 'crop_h' => $crop_h] as $field => $val) {
+            if ($val === null || $val < 0 || $val > 1) {
+                Response::json(['error' => "Valeur invalide pour $field (attendu : flottant entre 0 et 1)"], 400);
+                return;
+            }
         }
 
-        $imageData = base64_decode($matches[2]);
-        if ($imageData === false || strlen($imageData) === 0) {
-            Response::json(['error' => 'Données image invalides'], 400); return;
+        // Vérification cohérence : la zone de crop ne doit pas déborder
+        if (($crop_x + $crop_w) > 1.001 || ($crop_y + $crop_h) > 1.001) {
+            Response::json(['error' => 'La zone de recadrage dépasse les limites de l\'image'], 400);
+            return;
         }
 
-        // Limite 2 Mo sur la donnée décodée
-        if (strlen($imageData) > 2097152) {
-            Response::json(['error' => 'Image trop lourde (max 2 Mo)'], 400); return;
+        // Vérification taille minimale (évite un crop dégénéré)
+        if ($crop_w < 0.05 || $crop_h < 0.05) {
+            Response::json(['error' => 'Zone de recadrage trop petite (minimum 5% de l\'image)'], 400);
+            return;
         }
 
-        // Charger via GD pour validation + reconversion JPEG propre
-        $img = @imagecreatefromstring($imageData);
-        if (!$img) { Response::json(['error' => 'Image corrompue ou illisible'], 400); return; }
-
-        // Chemin cible (même convention que PhotoController / apiUploadPhoto)
-        $classeFichier = nettoyerChaine($student['class_name']);
-        $nomFichier    = nettoyerChaine(mb_strtoupper($student['last_name'], 'UTF-8'));
-        $prenomFichier = removeAccents(nettoyerChaine($student['first_name']));
-
-        $dir  = '/var/www/sub-domains/proclasse/public/data/photos_eleves/';
-        $path = $dir . "{$classeFichier}.{$nomFichier}.{$prenomFichier}.jpg";
-
-        if (!is_dir($dir)) mkdir($dir, 0755, true);
-
-        if (!imagejpeg($img, $path, 90)) {
-            imagedestroy($img);
-            Response::json(['error' => 'Impossible d\'enregistrer la photo recadrée'], 500); return;
-        }
-        imagedestroy($img);
+        // INSERT ou mise à jour du crop pour cet élève (scope = 'student')
+        $stmtUpsert = $db->prepare("
+            INSERT INTO photo_crop_settings (scope, scope_id, crop_x, crop_y, crop_w, crop_h)
+            VALUES ('student', ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                crop_x = VALUES(crop_x),
+                crop_y = VALUES(crop_y),
+                crop_w = VALUES(crop_w),
+                crop_h = VALUES(crop_h)
+        ");
+        $stmtUpsert->execute([$studentId, $crop_x, $crop_y, $crop_w, $crop_h]);
 
         Response::json(['ok' => true]);
     }
