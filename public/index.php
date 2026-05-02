@@ -23,7 +23,7 @@ spl_autoload_register(function (string $class): void {
     }
 });
 
-// ── Gestion des erreurs ─────────────────────────────────
+// ── Gestion des erreurs ───────────────────────────────────
 if ($appCfg['debug'] ?? false) {
     ini_set('display_errors', '1');
     error_reporting(E_ALL);
@@ -43,7 +43,7 @@ if ($appCfg['debug'] ?? false) {
 // ── Session ─────────────────────────────────────────────
 Auth::start();
 
-// ── Routes PUBLIQUES (sans Auth::check) ────────────────────
+// ── Routes PUBLIQUES (sans Auth::check) ──────────────────────
 // /login, /logout et /install sont gérées par AuthController.
 // /photo est publique : les photos élèves peuvent être affichées sans login
 // (la sécurité repose sur l'URL non-devinable Classe.Nom.Prenom.jpg)
@@ -133,7 +133,8 @@ $router->add('DELETE', '/api/sessions/{id}/remove-student/{student_id}',     fn(
 // Onglets fiche élève
 $router->add('POST',   '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiUploadPhoto($p));
 $router->add('DELETE', '/api/students/{id}/photo',                           fn($p)=> (new StudentController)->apiDeletePhoto($p));
-// Recadrage photo élève (crop Canvas → base64 → JPEG)
+// Recadrage photo élève : lecture + écriture des paramètres crop en BDD (sans toucher au fichier)
+$router->add('GET',    '/api/students/{id}/photo-crop',                      fn($p)=> (new StudentController)->apiGetCrop($p));
 $router->add('POST',   '/api/students/{id}/photo-crop',                      fn($p)=> (new StudentController)->apiSaveCrop($p));
 
 
@@ -151,5 +152,5 @@ $router->add('GET',     '/',                                                 fn(
 $router->add('GET',    '/tags',                                              fn()  => (new SessionController)->tagsIndex());
 
 
-// ── Dispatch ───────────────────────────────────────────────
+// ── Dispatch ──────────────────────────────────────────────
 $router->dispatch($method, $uri);
