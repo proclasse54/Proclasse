@@ -137,6 +137,7 @@ class SessionController
             return;
         }
 
+        // ── Séance précédente (même classe) ──────────────────────────────────
         $stmtPrev = $db->prepare("
             SELECT se.id, se.date, se.time_start,
                    COALESCE(g.name, c.name) AS class_name
@@ -163,6 +164,7 @@ class SessionController
         $prevRow = $stmtPrev->fetch() ?: null;
         $prevId  = $prevRow ? (int)$prevRow['id'] : null;
 
+        // ── Séance suivante (même classe) ─────────────────────────────────────
         $stmtNext = $db->prepare("
             SELECT se.id, se.date, se.time_start,
                    COALESCE(g.name, c.name) AS class_name
@@ -188,6 +190,41 @@ class SessionController
         ]);
         $nextRow = $stmtNext->fetch() ?: null;
         $nextId  = $nextRow ? (int)$nextRow['id'] : null;
+
+        // ── Séance globale suivante (toutes classes) ──────────────────────────
+        // Prochaine séance chronologique, quelle que soit la classe.
+        // Exclut la séance courante et, si elle existe, la séance $nextId
+        // (même classe) pour ne pas la dupliquer dans la vue.
+        $stmtGlobalNext = $db->prepare("
+            SELECT se.id, se.date, se.time_start,
+                   COALESCE(g.name, c.name) AS class_name
+            FROM sessions se
+            JOIN seating_plans sp ON sp.id = se.plan_id
+            JOIN classes c ON c.id = sp.class_id
+            LEFT JOIN groups g ON g.id = sp.group_id
+            WHERE (
+                    se.date > ?
+                    OR (se.date = ? AND se.time_start IS NOT NULL AND se.time_start > ?)
+                  )
+              AND se.id != ?
+            ORDER BY se.date ASC, se.time_start ASC
+            LIMIT 1
+        ");
+        $stmtGlobalNext->execute([
+            $session['date'],
+            $session['date'],
+            $session['time_start'] ?? '00:00:00',
+            $session['id'],
+        ]);
+        $globalNextRow = $stmtGlobalNext->fetch() ?: null;
+        $globalNextId  = $globalNextRow ? (int)$globalNextRow['id'] : null;
+
+        // Si la séance globale suivante est la même que la suivante de la classe,
+        // on ne l'affiche pas en double dans la barre : on la masque.
+        if ($globalNextId && $globalNextId === $nextId) {
+            $globalNextRow = null;
+            $globalNextId  = null;
+        }
 
         $stmtSeats = $db->prepare("
             SELECT s.id, s.row_index, s.col_index, s.label,
