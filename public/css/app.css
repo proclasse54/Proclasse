@@ -463,6 +463,29 @@ body {
 }
 .tag-chip:hover { transform: scale(1.2); }
 
+/* ── Photo élève dans la vignette ────────────────────────── */
+.seat-photo {
+    width: 50%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: var(--radius-sm, 4px);
+    display: block;
+}
+
+.seat-photo-placeholder {
+    width: 100%;
+    aspect-ratio: 1;
+    background: var(--color-surface-offset, #e5e5e5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--color-text-muted, #888);
+    border-radius: var(--radius-sm, 4px);
+    text-transform: uppercase;
+}
+
 /* Sidebar live */
 .live-sidebar { display: flex; flex-direction: column; gap: var(--space-4); }
 .live-sidebar h3 { font-size: var(--text-sm); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
